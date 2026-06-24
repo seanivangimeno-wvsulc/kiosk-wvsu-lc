@@ -10,6 +10,16 @@ import { ADMIN_ACCOUNTS } from './lib/mysql_export';
 import AdminConsole from './components/AdminConsole';
 import { Camera, Award, Shield, Coins, Gift, Eye } from 'lucide-react';
 
+import { 
+  loadLocalStorage, 
+  saveLocalStorage, 
+  INITIAL_STUDENTS, 
+  INITIAL_ATTENDANCE, 
+  INITIAL_PAST_EVENTS, 
+  INITIAL_UPCOMING_EVENTS, 
+  INITIAL_EVALUATIONS 
+} from './localData';
+
 import lanyardImg from './assets/images/lanyard_reward_1782276232577.jpg';
 import stickersImg from './assets/images/stickers_reward_1782276250102.jpg';
 import capImg from './assets/images/cap_reward_1782276263148.jpg';
@@ -131,6 +141,11 @@ export default function App() {
   // GLOBAL LAYOUT TABS: 'kiosk' vs 'admin'
   const [activeTab, setActiveTab] = useState<'kiosk' | 'admin'>('kiosk');
 
+  // OFFLINE / LOCAL STORAGE MODE FOR OFFLINE LM STUDIO COMPATIBILITY
+  const [isOfflineMode, setIsOfflineMode] = useState<boolean>(() => {
+    return loadLocalStorage('kiosk_offline_mode', false);
+  });
+
   // DYNAMIC REAL-TIME CLOCK FOR BOLD DISPLAY
   const [currentTime, setCurrentTime] = useState<Date>(new Date());
   useEffect(() => {
@@ -241,35 +256,97 @@ export default function App() {
 
   // SYNC UTILITY WITH SERVER DATASTORE
   const syncDatabase = () => {
+    if (isOfflineMode) {
+      const localSt = loadLocalStorage('kiosk_students', INITIAL_STUDENTS);
+      const localUp = loadLocalStorage('kiosk_upcoming_events', INITIAL_UPCOMING_EVENTS);
+      const localPast = loadLocalStorage('kiosk_past_events', INITIAL_PAST_EVENTS);
+      const localEvals = loadLocalStorage('kiosk_evaluations', INITIAL_EVALUATIONS);
+      const localAtt = loadLocalStorage('kiosk_attendance_records', INITIAL_ATTENDANCE);
+
+      setStudents(localSt);
+      setUpcomingEvents(localUp);
+      setPastEvents(localPast);
+      setEvaluations(localEvals);
+      setAttendanceRecords(localAtt);
+
+      if (loggedInStudent.id) {
+        const found = localSt.find(s => s.id.trim().toLowerCase() === loggedInStudent.id.trim().toLowerCase());
+        if (found) {
+          setLoggedInStudent(found);
+        }
+      }
+      return;
+    }
+
     fetch('/api/students')
       .then(res => res.json())
-      .then(data => { if (data.success) setStudents(data.students); })
-      .catch(e => console.error("Error syncing students:", e));
+      .then(data => { 
+        if (data.success) {
+          setStudents(data.students); 
+          saveLocalStorage('kiosk_students', data.students);
+        } 
+      })
+      .catch(e => {
+        console.error("Error syncing students:", e);
+        setStudents(loadLocalStorage('kiosk_students', INITIAL_STUDENTS));
+      });
 
     fetch('/api/upcoming-events')
       .then(res => res.json())
-      .then(data => { if (data.success) setUpcomingEvents(data.upcomingEvents); })
-      .catch(e => console.error("Error syncing upcoming events:", e));
+      .then(data => { 
+        if (data.success) {
+          setUpcomingEvents(data.upcomingEvents); 
+          saveLocalStorage('kiosk_upcoming_events', data.upcomingEvents);
+        } 
+      })
+      .catch(e => {
+        console.error("Error syncing upcoming events:", e);
+        setUpcomingEvents(loadLocalStorage('kiosk_upcoming_events', INITIAL_UPCOMING_EVENTS));
+      });
 
     fetch('/api/past-events')
       .then(res => res.json())
-      .then(data => { if (data.success) setPastEvents(data.pastEvents); })
-      .catch(e => console.error("Error syncing past events:", e));
+      .then(data => { 
+        if (data.success) {
+          setPastEvents(data.pastEvents); 
+          saveLocalStorage('kiosk_past_events', data.pastEvents);
+        } 
+      })
+      .catch(e => {
+        console.error("Error syncing past events:", e);
+        setPastEvents(loadLocalStorage('kiosk_past_events', INITIAL_PAST_EVENTS));
+      });
 
     fetch('/api/past-evaluations')
       .then(res => res.json())
-      .then(data => { if (data.success) setEvaluations(data.evaluations); })
-      .catch(e => console.error("Error syncing evaluations:", e));
+      .then(data => { 
+        if (data.success) {
+          setEvaluations(data.evaluations); 
+          saveLocalStorage('kiosk_evaluations', data.evaluations);
+        } 
+      })
+      .catch(e => {
+        console.error("Error syncing evaluations:", e);
+        setEvaluations(loadLocalStorage('kiosk_evaluations', INITIAL_EVALUATIONS));
+      });
 
     fetch('/api/attendance')
       .then(res => res.json())
-      .then(data => { if (data.success) setAttendanceRecords(data.attendance); })
-      .catch(e => console.error("Error syncing attendance records:", e));
+      .then(data => { 
+        if (data.success) {
+          setAttendanceRecords(data.attendance); 
+          saveLocalStorage('kiosk_attendance_records', data.attendance);
+        } 
+      })
+      .catch(e => {
+        console.error("Error syncing attendance records:", e);
+        setAttendanceRecords(loadLocalStorage('kiosk_attendance_records', INITIAL_ATTENDANCE));
+      });
   };
 
   useEffect(() => {
     syncDatabase();
-  }, [refreshTrigger, kioskStep]);
+  }, [refreshTrigger, kioskStep, isOfflineMode]);
 
   useEffect(() => {
     if (terminalBottomRef.current) {
@@ -483,6 +560,52 @@ export default function App() {
       ...wizardAnswers
     };
 
+    if (isOfflineMode) {
+      setTimeout(() => {
+        setReportLoading(false);
+        const localEvals = loadLocalStorage('kiosk_evaluations', INITIAL_EVALUATIONS);
+        const newEval = {
+          id: `SUB-P01-${Math.floor(1000 + Math.random() * 9000)}`,
+          student_id: payload.student_id,
+          college: payload.college,
+          event_id: payload.event_id,
+          q1: payload.q1,
+          q2: payload.q2,
+          q3: payload.q3,
+          q4: payload.q4,
+          q5: payload.q5,
+          q6: payload.q6,
+          q7: payload.q7,
+          q8: payload.q8,
+          q9: payload.q9,
+          timestamp: new Date().toISOString()
+        };
+        localEvals.push(newEval);
+        saveLocalStorage('kiosk_evaluations', localEvals);
+
+        // Update student points (+15 points for submitting an evaluation!)
+        const localStudents = loadLocalStorage('kiosk_students', INITIAL_STUDENTS);
+        const stIdx = localStudents.findIndex(s => s.id === payload.student_id);
+        if (stIdx >= 0) {
+          localStudents[stIdx].points = (localStudents[stIdx].points ?? 0) + 15;
+          saveLocalStorage('kiosk_students', localStudents);
+          setLoggedInStudent(localStudents[stIdx]);
+        }
+
+        // Calculate college counts
+        const collegeCount = localEvals.filter(e => e.event_id === payload.event_id && e.college === payload.college).length;
+        const campusTotal = localEvals.filter(e => e.event_id === payload.event_id).length;
+
+        setCompletedCollegeCount(collegeCount);
+        setCompletedCampusCount(campusTotal);
+        setKioskStep('completed');
+        playBeep(1400, 0.35);
+        syncDatabase();
+        addTerminalLine(`Submission ID ${newEval.id} filed under ${payload.college} channel successfully (Offline Mode)!`);
+      }, 500);
+      return;
+    }
+
     fetch('/api/submit-evaluation', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -549,6 +672,64 @@ export default function App() {
       event_id: attendanceEventId,
       proof_image: attendanceProof
     };
+
+    if (isOfflineMode) {
+      setTimeout(() => {
+        setIsSubmittingAttendance(false);
+        const localStudents = loadLocalStorage('kiosk_students', INITIAL_STUDENTS);
+        let matchedLocal = localStudents.find(s => s.id.trim().toLowerCase() === attendanceStudentId.trim().toLowerCase());
+        
+        if (!matchedLocal) {
+          // auto enroll if not found
+          matchedLocal = {
+            id: attendanceStudentId.trim(),
+            name: attendanceStudentName.trim(),
+            college: attendanceCollege,
+            program: `${attendanceCollege} Student`,
+            year: Number(attendanceYear) || 1,
+            points: 0,
+            redeemedRewards: []
+          };
+          localStudents.push(matchedLocal);
+        }
+
+        // award 50 points
+        matchedLocal.points = (matchedLocal.points ?? 0) + 50;
+        saveLocalStorage('kiosk_students', localStudents);
+
+        // add attendance record
+        const localAttendance = loadLocalStorage('kiosk_attendance_records', INITIAL_ATTENDANCE);
+        const pastEvts = loadLocalStorage('kiosk_past_events', INITIAL_PAST_EVENTS);
+        const upEvts = loadLocalStorage('kiosk_upcoming_events', INITIAL_UPCOMING_EVENTS);
+        const foundEvent = pastEvts.find(e => e.id === attendanceEventId) || upEvts.find(e => e.id === attendanceEventId);
+        const eventTitle = foundEvent ? foundEvent.title : 'Campus Event';
+
+        const newRecord = {
+          id: `ATT-${Math.floor(1000 + Math.random() * 9000)}`,
+          studentId: matchedLocal.id,
+          studentName: matchedLocal.name,
+          college: matchedLocal.college,
+          year: matchedLocal.year,
+          eventId: attendanceEventId,
+          eventTitle: eventTitle,
+          timestamp: new Date().toISOString(),
+          pointsEarned: 50,
+          proofImage: attendanceProof || "https://images.unsplash.com/photo-1544717305-2782549b5136?w=500",
+          status: "APPROVED" as const
+        };
+        localAttendance.push(newRecord);
+        saveLocalStorage('kiosk_attendance_records', localAttendance);
+
+        playBeep(1400, 0.4);
+        setAttendanceMessage({ text: `Success! Attendance logged. You have earned +50 points! Current balance: ${matchedLocal.points} PTS.`, success: true });
+        addTerminalLine(`SUCCESS: Attendance logged for ${matchedLocal.name}. +50 PTS credited (Offline Mode).`);
+        
+        setAttendanceProof('');
+        setLoggedInStudent(matchedLocal);
+        syncDatabase();
+      }, 500);
+      return;
+    }
 
     fetch('/api/attendance', {
       method: 'POST',
@@ -633,6 +814,28 @@ export default function App() {
     setRewardsError('');
     setRewardsSuccess('');
     addTerminalLine(`Processing reward redemption for ${reward.title} (-${reward.pointsCost} PTS)...`);
+
+    if (isOfflineMode) {
+      setTimeout(() => {
+        setIsRedeeming(false);
+        const localStudents = loadLocalStorage('kiosk_students', INITIAL_STUDENTS);
+        const stIdx = localStudents.findIndex(s => s.id === loggedInStudent.id);
+        if (stIdx >= 0) {
+          const student = localStudents[stIdx];
+          student.points = (student.points ?? 0) - reward.pointsCost;
+          if (!student.redeemedRewards) student.redeemedRewards = [];
+          student.redeemedRewards.push(reward.title);
+          saveLocalStorage('kiosk_students', localStudents);
+          setLoggedInStudent(student);
+
+          playBeep(1500, 0.5);
+          setRewardsSuccess(`Successfully redeemed ${reward.title}! Voucher Ticket: WVSU-${reward.id}-${Math.floor(1000 + Math.random() * 9000)} is valid. Present this to OSAS/SSC booth to claim your item (Offline Mode).`);
+          addTerminalLine(`SUCCESS: ${reward.title} claimed. Remaining points: ${student.points} PTS (Offline Mode).`);
+          syncDatabase();
+        }
+      }, 500);
+      return;
+    }
 
     const payload = {
       studentId: loggedInStudent.id,
@@ -873,6 +1076,27 @@ export default function App() {
               <option value="hil">Hiligaynon (Ilonggo)</option>
               <option value="fil">Filipino (Tagalog)</option>
             </select>
+          </div>
+
+          {/* OFFLINE / LM STUDIO COMPATIBILITY TOGGLE */}
+          <div className="flex items-center gap-2 border border-slate-200 bg-slate-50/90 rounded-xl px-3 py-2 shadow-sm transition-all focus-within:ring-2 focus-within:ring-indigo-100">
+            <span className="text-[9px] font-bold uppercase text-slate-400 tracking-wider">🔌 DB Mode:</span>
+            <button
+              onClick={() => {
+                const nextMode = !isOfflineMode;
+                setIsOfflineMode(nextMode);
+                saveLocalStorage('kiosk_offline_mode', nextMode);
+                playBeep(nextMode ? 1400 : 900, 0.1);
+                addTerminalLine(`SYSTEM CONFIG CHANGE: Database switched to ${nextMode ? "OFFLINE (Local Storage/LM Studio Mode)" : "ONLINE (Cloud Run server)"}`);
+              }}
+              className="bg-transparent flex items-center gap-1.5 text-xs font-bold uppercase focus:outline-none cursor-pointer border-none p-0"
+              title="Click to toggle between Cloud Database and Local Storage (Offline LM Studio) mode"
+            >
+              <span className={`w-2 h-2 rounded-full ${isOfflineMode ? 'bg-amber-500 animate-pulse' : 'bg-emerald-500 animate-pulse'}`}></span>
+              <span className={isOfflineMode ? 'text-amber-700' : 'text-emerald-700'}>
+                {isOfflineMode ? 'LOCAL (LM STUDIO)' : 'ONLINE'}
+              </span>
+            </button>
           </div>
 
           {/* Dynamic Dual Tab Switch */}
@@ -1887,6 +2111,8 @@ export default function App() {
                 attendanceRecords={attendanceRecords}
                 onSync={syncDatabase}
                 currentAdminUser={currentAdminUser}
+                isOfflineMode={isOfflineMode}
+                setIsOfflineMode={setIsOfflineMode}
                 onLogout={() => {
                   setIsAdminLoggedIn(false);
                   setCurrentAdminUser(null);

@@ -7,6 +7,17 @@ import { Student, UpcomingEvent, PastEvent, Evaluation, EvaluationReport, Attend
 import { ADMIN_ACCOUNTS, MYSQL_SCHEMA_DDL, generateLiveMySQLDump } from '../lib/mysql_export';
 import { Camera, Coins, Database } from 'lucide-react';
 
+import { 
+  loadLocalStorage, 
+  saveLocalStorage, 
+  generateOfflineReport,
+  INITIAL_STUDENTS, 
+  INITIAL_ATTENDANCE, 
+  INITIAL_PAST_EVENTS, 
+  INITIAL_UPCOMING_EVENTS, 
+  INITIAL_EVALUATIONS 
+} from '../localData';
+
 interface AdminConsoleProps {
   students: Student[];
   upcomingEvents: UpcomingEvent[];
@@ -15,6 +26,8 @@ interface AdminConsoleProps {
   attendanceRecords: AttendanceRecord[];
   onSync: () => void;
   currentAdminUser: any;
+  isOfflineMode: boolean;
+  setIsOfflineMode: (mode: boolean) => void;
   onLogout: () => void;
   playBeep: (freq: number, dur: number) => void;
   addTerminalLine: (line: string) => void;
@@ -59,7 +72,8 @@ const ORGANIZER_OPTIONS = [
 export default function AdminConsole(props: AdminConsoleProps) {
   const { 
     students, upcomingEvents, pastEvents, evaluations, attendanceRecords,
-    onSync, currentAdminUser, onLogout, playBeep, addTerminalLine 
+    onSync, currentAdminUser, onLogout, playBeep, addTerminalLine,
+    isOfflineMode, setIsOfflineMode
   } = props;
 
   const [adminSubTab, setAdminSubTab] = useState<'analytics' | 'students' | 'events' | 'mysql' | 'attendance'>('analytics');
@@ -145,14 +159,33 @@ export default function AdminConsole(props: AdminConsoleProps) {
   const [attendanceIdToDiscard, setAttendanceIdToDiscard] = useState<string | null>(null);
 
   // AI Config states for LM Studio Gemma model
-  const [aiProvider, setAiProvider] = useState<'gemini' | 'gemma_local'>('gemini');
-  const [aiLocalUrl, setAiLocalUrl] = useState<string>('http://localhost:1234/v1');
-  const [aiLocalModel, setAiLocalModel] = useState<string>('gemma');
+  const [aiProvider, setAiProvider] = useState<'gemini' | 'gemma_local'>(() => {
+    const saved = loadLocalStorage<any>('kiosk_ai_config', null);
+    return saved?.provider || 'gemini';
+  });
+  const [aiLocalUrl, setAiLocalUrl] = useState<string>(() => {
+    const saved = loadLocalStorage<any>('kiosk_ai_config', null);
+    return saved?.localUrl || 'http://localhost:1234/v1';
+  });
+  const [aiLocalModel, setAiLocalModel] = useState<string>(() => {
+    const saved = loadLocalStorage<any>('kiosk_ai_config', null);
+    return saved?.localModel || 'gemma';
+  });
   const [aiHasGeminiKey, setAiHasGeminiKey] = useState<boolean>(false);
   const [aiSaveStatus, setAiSaveStatus] = useState<string>('');
 
   // Fetch AI Config on load
   useEffect(() => {
+    if (isOfflineMode) {
+      const saved = loadLocalStorage<any>('kiosk_ai_config', null);
+      if (saved) {
+        setAiProvider(saved.provider || 'gemini');
+        setAiLocalUrl(saved.localUrl || 'http://localhost:1234/v1');
+        setAiLocalModel(saved.localModel || 'gemma');
+      }
+      return;
+    }
+
     fetch('/api/ai-config')
       .then(res => res.json())
       .then(data => {
@@ -161,23 +194,41 @@ export default function AdminConsole(props: AdminConsoleProps) {
           setAiLocalUrl(data.config.localUrl);
           setAiLocalModel(data.config.localModel);
           setAiHasGeminiKey(data.hasGeminiKey);
+          
+          saveLocalStorage('kiosk_ai_config', data.config);
         }
       })
       .catch(err => {
         console.error("Failed to load AI configuration:", err);
+        const saved = loadLocalStorage<any>('kiosk_ai_config', null);
+        if (saved) {
+          setAiProvider(saved.provider || 'gemini');
+          setAiLocalUrl(saved.localUrl || 'http://localhost:1234/v1');
+          setAiLocalModel(saved.localModel || 'gemma');
+        }
       });
-  }, []);
+  }, [isOfflineMode]);
 
   const handleSaveAIConfig = () => {
     setAiSaveStatus('Saving...');
+    const configData = {
+      provider: aiProvider,
+      localUrl: aiLocalUrl,
+      localModel: aiLocalModel
+    };
+    saveLocalStorage('kiosk_ai_config', configData);
+
+    if (isOfflineMode) {
+      setAiSaveStatus('Saved successfully (Local Config)!');
+      playBeep(900, 0.1);
+      setTimeout(() => setAiSaveStatus(''), 3000);
+      return;
+    }
+
     fetch('/api/ai-config', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        provider: aiProvider,
-        localUrl: aiLocalUrl,
-        localModel: aiLocalModel
-      })
+      body: JSON.stringify(configData)
     })
       .then(res => res.json())
       .then(data => {
@@ -235,6 +286,22 @@ export default function AdminConsole(props: AdminConsoleProps) {
     setGeneratedReport(null);
     playBeep(800, 0.1);
 
+    if (isOfflineMode) {
+      generateOfflineReport(adminSelectedEventId, evaluations, pastEvents, aiProvider, aiLocalUrl, aiLocalModel)
+        .then(report => {
+          setReportLoading(false);
+          setGeneratedReport(report);
+          playBeep(1200, 0.2);
+          addTerminalLine(`AI Synthesis generated (Offline Mode / ${aiProvider === 'gemma_local' ? 'Gemma Local' : 'Fallback'}) for event "${report.eventTitle}" successfully.`);
+        })
+        .catch(err => {
+          setReportLoading(false);
+          setReportError("Offline AI Service Error: " + err.message);
+          playBeep(400, 0.35);
+        });
+      return;
+    }
+
     fetch('/api/generate-report', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -272,18 +339,42 @@ export default function AdminConsole(props: AdminConsoleProps) {
       ? upOrganizer
       : currentAdminUser.agency;
 
+    const newEventData = {
+      title: upTitle.trim(),
+      date: formatDateFriendly(upDate.trim()),
+      time: upTime.trim() || 'All-Day',
+      venue: upVenue.trim(),
+      organizer: assignedOrganizer,
+      open_to: upOpenTo,
+      description: upDesc.trim() || ''
+    };
+
+    if (isOfflineMode) {
+      const localEvents = loadLocalStorage('kiosk_upcoming_events', INITIAL_UPCOMING_EVENTS);
+      const newEvent = {
+        id: `EVT-UP-${Math.floor(1000 + Math.random() * 9000)}`,
+        ...newEventData
+      };
+      localEvents.push(newEvent);
+      saveLocalStorage('kiosk_upcoming_events', localEvents);
+
+      setUpEventStatus({ success: true, message: 'Upcoming Event successfully scheduled (Offline Mode)!' });
+      setUpTitle('');
+      setUpDate('');
+      setUpTime('');
+      setUpVenue('');
+      setUpOpenTo('All Students');
+      setUpDesc('');
+      playBeep(1200, 0.15);
+      onSync();
+      setTimeout(() => setUpEventStatus(null), 4000);
+      return;
+    }
+
     fetch('/api/upcoming-events', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        title: upTitle.trim(),
-        date: formatDateFriendly(upDate.trim()),
-        time: upTime.trim() || 'All-Day',
-        venue: upVenue.trim(),
-        organizer: assignedOrganizer,
-        open_to: upOpenTo,
-        description: upDesc.trim() || ''
-      })
+      body: JSON.stringify(newEventData)
     })
       .then(res => res.json())
       .then(data => {
@@ -303,6 +394,16 @@ export default function AdminConsole(props: AdminConsoleProps) {
   };
 
   const handleDeleteUpcomingEvent = (id: string) => {
+    if (isOfflineMode) {
+      const localEvents = loadLocalStorage('kiosk_upcoming_events', INITIAL_UPCOMING_EVENTS);
+      const filtered = localEvents.filter(e => e.id !== id);
+      saveLocalStorage('kiosk_upcoming_events', filtered);
+      addTerminalLine(`Upcoming event ${id} deleted (Offline Mode).`);
+      playBeep(600, 0.1);
+      onSync();
+      return;
+    }
+
     fetch(`/api/upcoming-events/${id}`, { method: 'DELETE' })
       .then(res => res.json())
       .then(data => {
@@ -326,17 +427,40 @@ export default function AdminConsole(props: AdminConsoleProps) {
       ? pastOrganizer
       : currentAdminUser.agency;
 
+    const newPastEventData = {
+      title: pastTitle.trim(),
+      date: formatDateFriendly(pastDate.trim()),
+      venue: pastVenue.trim(),
+      organizer: assignedOrganizer,
+      total_attendance: Number(pastAttendance) || 100,
+      colleges_participated: pastColleges
+    };
+
+    if (isOfflineMode) {
+      const localPast = loadLocalStorage('kiosk_past_events', INITIAL_PAST_EVENTS);
+      const newPast = {
+        id: `EVT-PAST-${Math.floor(1000 + Math.random() * 9000)}`,
+        ...newPastEventData
+      };
+      localPast.push(newPast);
+      saveLocalStorage('kiosk_past_events', localPast);
+
+      setPastEventStatus({ success: true, message: 'Past Event registry initialized (Offline Mode)!' });
+      setPastTitle('');
+      setPastDate('');
+      setPastVenue('');
+      setPastAttendance(100);
+      setPastColleges(['BSINFO TECH', 'BSED', 'BSIT', 'BSHM', 'BS CRIM']);
+      playBeep(1200, 0.15);
+      onSync();
+      setTimeout(() => setPastEventStatus(null), 4000);
+      return;
+    }
+
     fetch('/api/past-events', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        title: pastTitle.trim(),
-        date: formatDateFriendly(pastDate.trim()),
-        venue: pastVenue.trim(),
-        organizer: assignedOrganizer,
-        total_attendance: Number(pastAttendance) || 100,
-        colleges_participated: pastColleges
-      })
+      body: JSON.stringify(newPastEventData)
     })
       .then(res => res.json())
       .then(data => {
@@ -355,6 +479,16 @@ export default function AdminConsole(props: AdminConsoleProps) {
   };
 
   const handleDeletePastEvent = (id: string) => {
+    if (isOfflineMode) {
+      const localPast = loadLocalStorage('kiosk_past_events', INITIAL_PAST_EVENTS);
+      const filtered = localPast.filter(e => e.id !== id);
+      saveLocalStorage('kiosk_past_events', filtered);
+      addTerminalLine(`Past Event registry ${id} deleted (Offline Mode).`);
+      playBeep(600, 0.1);
+      onSync();
+      return;
+    }
+
     fetch(`/api/past-events/${id}`, { method: 'DELETE' })
       .then(res => res.json())
       .then(data => {
@@ -373,16 +507,46 @@ export default function AdminConsole(props: AdminConsoleProps) {
       return;
     }
 
+    const studentData = {
+      id: newStudentId.trim(),
+      name: newStudentName.trim(),
+      college: newStudentCollege,
+      program: newStudentProgram.trim(),
+      year: newStudentYear
+    };
+
+    if (isOfflineMode) {
+      const localStudents = loadLocalStorage('kiosk_students', INITIAL_STUDENTS);
+      const exists = localStudents.some(s => s.id.toLowerCase() === studentData.id.toLowerCase());
+      if (exists) {
+        setManualAddStatus({ success: false, message: `Student ID "${studentData.id}" already exists in registry.` });
+        playBeep(400, 0.3);
+        return;
+      }
+
+      const newStudent = {
+        ...studentData,
+        points: 0,
+        redeemedRewards: []
+      };
+      localStudents.push(newStudent);
+      saveLocalStorage('kiosk_students', localStudents);
+
+      setManualAddStatus({ success: true, message: `Registered student "${newStudentName}" successfully (Offline Mode)!` });
+      setNewStudentId('');
+      setNewStudentName('');
+      setNewStudentProgram('');
+      setNewStudentYear(1);
+      playBeep(1100, 0.1);
+      onSync();
+      setTimeout(() => setManualAddStatus(null), 5000);
+      return;
+    }
+
     fetch('/api/students/registry', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        id: newStudentId.trim(),
-        name: newStudentName.trim(),
-        college: newStudentCollege,
-        program: newStudentProgram.trim(),
-        year: newStudentYear
-      })
+      body: JSON.stringify(studentData)
     })
       .then(res => res.json())
       .then(data => {
@@ -400,6 +564,16 @@ export default function AdminConsole(props: AdminConsoleProps) {
   };
 
   const executeDeleteAttendance = (id: string) => {
+    if (isOfflineMode) {
+      const localRecords = loadLocalStorage('kiosk_attendance_records', INITIAL_ATTENDANCE);
+      const filtered = localRecords.filter(r => r.id !== id);
+      saveLocalStorage('kiosk_attendance_records', filtered);
+      addTerminalLine(`REVERTED: Attendance log ${id} deleted (Offline Mode).`);
+      playBeep(600, 0.15);
+      onSync();
+      return;
+    }
+
     fetch(`/api/attendance/${encodeURIComponent(id)}`, { method: 'DELETE' })
       .then(res => res.json())
       .then(data => {
@@ -417,6 +591,16 @@ export default function AdminConsole(props: AdminConsoleProps) {
   };
 
   const executeDeleteStudent = (studentId: string) => {
+    if (isOfflineMode) {
+      const localStudents = loadLocalStorage('kiosk_students', INITIAL_STUDENTS);
+      const filtered = localStudents.filter(s => s.id !== studentId);
+      saveLocalStorage('kiosk_students', filtered);
+      addTerminalLine(`DELETED: Student ${studentId} removed (Offline Mode).`);
+      playBeep(600, 0.1);
+      onSync();
+      return;
+    }
+
     fetch(`/api/students/registry/${encodeURIComponent(studentId)}`, { method: 'DELETE' })
       .then(res => res.json())
       .then(data => {
