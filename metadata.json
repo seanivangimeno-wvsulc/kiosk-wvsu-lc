@@ -1,0 +1,10 @@
+{
+  "name": "Remix: Remix: Remix: WVSU-LC Kiosk \u0026 Evaluation System",
+  "description": "Student Activity Kiosk for West Visayas State University — Lambunao Campus featuring upcoming event listings, interactive past event evaluations, and an automated admin analysis dashboard.",
+  "requestFramePermissions": [
+    "camera"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

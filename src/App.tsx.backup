@@ -1,0 +1,1962 @@
+import React, { useState, useEffect, useRef } from 'react';
+import { 
+  School, Calendar, ClipboardCheck, Users, TrendingUp, AlertTriangle, 
+  CheckCircle, User, Sparkles, ArrowLeft, LogOut, ChevronRight, 
+  Monitor, Cpu, FileText, Check, Copy, AlertCircle, RefreshCw,
+  Upload, Trash2, Plus, Search
+} from 'lucide-react';
+import { Student, UpcomingEvent, PastEvent, Evaluation, EvaluationReport, AttendanceRecord, RewardItem } from './types';
+import { ADMIN_ACCOUNTS } from './lib/mysql_export';
+import AdminConsole from './components/AdminConsole';
+import { Camera, Award, Shield, Coins, Gift, Eye } from 'lucide-react';
+
+const COLLEGES = [
+  { code: 'BSINFO TECH', name: 'BS in Information Technology', enrolled: 350 },
+  { code: 'BSED',        name: 'BS in Secondary Education',      enrolled: 400 },
+  { code: 'BSIT',        name: 'BS in Industrial Technology',     enrolled: 300 },
+  { code: 'BSHM',        name: 'BS in Hospitality Management',    enrolled: 250 },
+];
+
+const CAMPUS_REWARDS: RewardItem[] = [
+  { id: 'REW-1', title: 'WVSU-LC Premium Lanyard', pointsCost: 50, description: 'Official campus lanyard featuring gold-pressed logo print.', category: 'Merchandise', icon: 'Award' },
+  { id: 'REW-2', title: 'College Pride Stickers Pack', pointsCost: 25, description: 'Set of 5 waterproof laptop stickers for IT, Education, and Tech majors.', category: 'Collectibles', icon: 'Sparkles' },
+  { id: 'REW-3', title: 'WVSU-LC Developer Cap', pointsCost: 150, description: 'Limited-edition structured dark-blue cap with gold emblem embroidery.', category: 'Apparel', icon: 'Gift' },
+  { id: 'REW-4', title: 'OSA Student Priority Pass', pointsCost: 100, description: 'Skip-the-line VIP priority access pass for rapid OSAS document clearances.', category: 'Privileges', icon: 'Shield' },
+  { id: 'REW-5', title: 'WVSU-LC Sports Tee', pointsCost: 200, description: 'Lightweight, sweat-wicking department sports shirt.', category: 'Apparel', icon: 'Award' },
+  { id: 'REW-6', title: 'SSC Gold Citizen Badge', pointsCost: 75, description: 'Official metal emblem pinning recognizing active student civic action.', category: 'Collectibles', icon: 'Coins' },
+];
+
+const TRANSLATIONS: Record<string, Record<string, string>> = {
+  en: {
+    system_title: "WVSU-LC STUDENT ACTIVITY KIOSK",
+    sub_title: "Direct Evaluation Engine • West Visayas State University - Lambunao Campus",
+    sidebar_title: "Walk-in Student Profile",
+    sidebar_desc: "Type your profile variables below to dynamically personalize evaluations in real-time.",
+    points: "Your Campus Points",
+    redeem: "Redeem",
+    redeemed_perks: "Redeemed Perks",
+    student_name: "Student Full Name",
+    student_id: "Student Registration ID",
+    college_dept: "College/Course Dept",
+    degree_prog: "Degree Program",
+    year_level: "Year Level",
+    kiosk_console: "Kiosk System Console",
+    admin_security: "Department Log-In",
+    welcome: "Welcome to WVSU-LC Student Kiosk",
+    welcome_desc: "West Visayas State University - Lambunao Campus welcomes you to our digital kiosk terminal. Select any module command below:",
+    announcements: "Announcements",
+    announcements_desc: "Check current campus schedules & foundation details",
+    evaluate_events: "Evaluate Past Events",
+    evaluate_desc: "Rate past convocations and submit feedback",
+    check_in: "Check-In Attendance",
+    check_in_desc: "Log attendance for current/past events with selfie proof & claim points",
+    rewards_store: "Rewards Store",
+    rewards_store_desc: "Redeem your accumulated points for exclusive campus custom merchandise",
+    back_to_menu: "Back to Menu",
+    submit_evaluation: "Submit Evaluation",
+    log_checkin: "Validate & Log Check-In",
+    active_profile: "Active Profile",
+  },
+  hil: {
+    system_title: "WVSU-LC ESTUDYANTE KIOSK",
+    sub_title: "Direkta nga Pag-usisa sang Rehistro • West Visayas State University - Lambunao Campus",
+    sidebar_title: "Profile sang Estudyante",
+    sidebar_desc: "Ibutang ang imo detalye sa idalom para ma-personalize ang imo pag-evaluate.",
+    points: "Imo Puntos sa Kampus",
+    redeem: "Bawi-on",
+    redeemed_perks: "Mga Nakuha nga Regalo",
+    student_name: "Tig-una nga Ngalan sang Estudyante",
+    student_id: "Numero sang ID sang Estudyante",
+    college_dept: "Departamento sang Kolehiyo",
+    degree_prog: "Programa sang Kurso",
+    year_level: "Tuig sa Kolehiyo",
+    kiosk_console: "Kiosk sang Estudyante",
+    admin_security: "Department Log-In",
+    welcome: "Maayong Pag-abot sa WVSU-LC Kiosk",
+    welcome_desc: "Ginasugata ka sang West Visayas State University - Lambunao Campus sa aton digital kiosk. Magpili sang command sa idalom:",
+    announcements: "Mga Anunsyo",
+    announcements_desc: "Tan-awa ang mga iskedyul sang kampus kag mga kapiestahan",
+    evaluate_events: "I-evaluate ang mga Katilingban",
+    evaluate_desc: "Hatagan sang puntos kag feedback ang mga nagligad nga aktibidad",
+    check_in: "Mag Check-In sa Attendance",
+    check_in_desc: "I-rehistro ang imo attendance gamit ang selfie para makakuha sang puntos",
+    rewards_store: "Tindahan sang Regalo",
+    rewards_store_desc: "I-baylo ang imo puntos sa mga eksklusibo nga gamit sang WVSU-LC",
+    back_to_menu: "Magbalik sa Menu",
+    submit_evaluation: "I-sumiter ang Evaluation",
+    log_checkin: "I-kumpirma ang Check-In",
+    active_profile: "Aktibo nga Profile",
+  },
+  fil: {
+    system_title: "WVSU-LC KIOSK NG ESTUDYANTE",
+    sub_title: "Direktang Sistema ng Pagsusuri • West Visayas State University - Lambunao Campus",
+    sidebar_title: "Profile ng Estudyante",
+    sidebar_desc: "I-type ang iyong impormasyon sa ibaba upang i-personalize ang iyong pagsusuri.",
+    points: "Iyong Puntos sa Kampus",
+    redeem: "I-redeem",
+    redeemed_perks: "Mga Natanggap na Gantimpala",
+    student_name: "Buong Pangalan ng Estudyante",
+    student_id: "ID Number ng Estudyante",
+    college_dept: "Kolehiyo / Departamento",
+    degree_prog: "Programa ng Degree",
+    year_level: "Antas ng Taon",
+    kiosk_console: "Kiosk Console",
+    admin_security: "Department Log-In",
+    welcome: "Maligayang Pagdating sa WVSU-LC Kiosk",
+    welcome_desc: "Malugod kayong tinatanggap ng West Visayas State University - Lambunao Campus. Pumili ng anomang opsyon sa ibaba:",
+    announcements: "Mga Anunsyo",
+    announcements_desc: "Suriin ang mga kasalukuyang iskedyul at anunsyo ng kampus",
+    evaluate_events: "Suriin ang mga Nakaraang Kaganapan",
+    evaluate_desc: "Magbigay ng rating at feedback para sa mga nakaraang aktibidad",
+    check_in: "Mag Check-In sa Attendance",
+    check_in_desc: "I-log ang iyong attendance gamit ang selfie upang makakuha ng puntos",
+    rewards_store: "Tindahan ng Gantimpala",
+    rewards_store_desc: "I-palit ang iyong mga puntos para sa mga eksklusibong produkto",
+    back_to_menu: "Bumalik sa Menu",
+    submit_evaluation: "I-sumite ang Pagsusuri",
+    log_checkin: "I-kumpirma ang Check-In",
+    active_profile: "Aktibong Profile",
+  }
+};
+
+export default function App() {
+  // GLOBAL LAYOUT TABS: 'kiosk' vs 'admin'
+  const [activeTab, setActiveTab] = useState<'kiosk' | 'admin'>('kiosk');
+
+  // DYNAMIC REAL-TIME CLOCK FOR BOLD DISPLAY
+  const [currentTime, setCurrentTime] = useState<Date>(new Date());
+  useEffect(() => {
+    const timer = setInterval(() => setCurrentTime(new Date()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  // SYNCHRONIZED SERVER ENTITY STATES
+  const [students, setStudents] = useState<Student[]>([]);
+  const [upcomingEvents, setUpcomingEvents] = useState<UpcomingEvent[]>([]);
+  const [pastEvents, setPastEvents] = useState<PastEvent[]>([]);
+  const [evaluations, setEvaluations] = useState<Evaluation[]>([]);
+  const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[]>([]);
+  const [refreshTrigger, setRefreshTrigger] = useState<number>(0);
+
+  // KIOSK ACTIVE LOGGED IN PROFILE (Bypasses login completely, editable sidebar!)
+  const [loggedInStudent, setLoggedInStudent] = useState<Student>({
+    id: '2021-0001',
+    name: 'Maria Santos',
+    college: 'BSINFO TECH',
+    program: 'BS Information Technology',
+    year: 3,
+    points: 150,
+    redeemedRewards: []
+  });
+
+  // KIOSK STATE MACHINE (Starts directly at greeting!)
+  const [kioskStep, setKioskStep] = useState<'greeting' | 'upcoming' | 'past_select' | 'form' | 'confirm' | 'completed' | 'attendance' | 'rewards'>('greeting');
+
+  // Admin and Credentials log
+  const [isAdminLoggedIn, setIsAdminLoggedIn] = useState<boolean>(false);
+  const [currentAdminUser, setCurrentAdminUser] = useState<any>(null);
+  const [adminUsername, setAdminUsername] = useState<string>('');
+  const [adminPassword, setAdminPassword] = useState<string>('');
+  const [adminAuthError, setAdminAuthError] = useState<string>('');
+
+  // Step wizard sub-states
+  const [selectedUpcomingId, setSelectedUpcomingId] = useState<string | null>(null);
+  const [selectedPastEvent, setSelectedPastEvent] = useState<PastEvent | null>(null);
+  const [currentQuestionIndex, setCurrentQuestionIndex] = useState<number>(0);
+  const [wizardAnswers, setWizardAnswers] = useState<any>({
+    q1: 5, q2: 5, q3: 5, q4: 5, q5: 5, q6: 'YES', q7: '', q8: '', q9: ''
+  });
+  const [answersFeedback, setAnswersFeedback] = useState<string>('');
+  const [completedCollegeCount, setCompletedCollegeCount] = useState<number>(0);
+  const [completedCampusCount, setCompletedCampusCount] = useState<number>(0);
+  const [reportLoading, setReportLoading] = useState<boolean>(false);
+
+  // ATTENDANCE & REWARDS DYNAMIC COMPANIONS
+  const [attendanceEventId, setAttendanceEventId] = useState<string>('');
+  const [attendanceStudentId, setAttendanceStudentId] = useState<string>('2021-0001');
+  const [attendanceStudentName, setAttendanceStudentName] = useState<string>('Maria Santos');
+  const [attendanceCollege, setAttendanceCollege] = useState<string>('BSINFO TECH');
+  const [attendanceProof, setAttendanceProof] = useState<string>('');
+  const [isCameraActive, setIsCameraActive] = useState<boolean>(false);
+  const [attendanceMessage, setAttendanceMessage] = useState<{ text: string; success: boolean } | null>(null);
+  const [isSubmittingAttendance, setIsSubmittingAttendance] = useState<boolean>(false);
+  const [attendanceYear, setAttendanceYear] = useState<number>(1);
+
+  // Profile Update Flow States
+  const [isProfileUpdateModalOpen, setIsProfileUpdateModalOpen] = useState<boolean>(false);
+  const [editStudentId, setEditStudentId] = useState<string>('');
+  const [editStudentName, setEditStudentName] = useState<string>('');
+  const [editStudentCollege, setEditStudentCollege] = useState<string>('BSINFO TECH');
+  const [editStudentProgram, setEditStudentProgram] = useState<string>('');
+  const [editStudentYear, setEditStudentYear] = useState<number>(1);
+  
+  // Multilingual State and Helper
+  const [language, setLanguage] = useState<'en' | 'hil' | 'fil'>('en');
+  const t = (key: string): string => {
+    return TRANSLATIONS[language]?.[key] || TRANSLATIONS['en']?.[key] || key;
+  };
+  
+  const [rewardsError, setRewardsError] = useState<string>('');
+  const [rewardsSuccess, setRewardsSuccess] = useState<string>('');
+  const [isRedeeming, setIsRedeeming] = useState<boolean>(false);
+
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const mediaStreamRef = useRef<MediaStream | null>(null);
+
+  // Terminal history log
+  const [terminalHistory, setTerminalHistory] = useState<string[]>([
+    "WVSU-LC OSAS Kiosk OS v1.1.2 loaded successfully.",
+    "Bypassed Student Login Gate. Live editable dashboard active.",
+    "Real-time sync connections established with Express background server.",
+    "Kiosk operational. Type admin credentials on tab redirection to manage."
+  ]);
+  const [terminalInput, setTerminalInput] = useState<string>('');
+  const terminalBottomRef = useRef<HTMLDivElement>(null);
+
+  // Play audio notes safely
+  const playBeep = (freq: number, dur: number) => {
+    try {
+      const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+      gain.gain.setValueAtTime(0.08, audioCtx.currentTime);
+      osc.start();
+      osc.stop(audioCtx.currentTime + dur);
+    } catch (e) {
+      // Audio blocked or unsupported
+    }
+  };
+
+  // SYNC UTILITY WITH SERVER DATASTORE
+  const syncDatabase = () => {
+    fetch('/api/students')
+      .then(res => res.json())
+      .then(data => { if (data.success) setStudents(data.students); })
+      .catch(e => console.error("Error syncing students:", e));
+
+    fetch('/api/upcoming-events')
+      .then(res => res.json())
+      .then(data => { if (data.success) setUpcomingEvents(data.upcomingEvents); })
+      .catch(e => console.error("Error syncing upcoming events:", e));
+
+    fetch('/api/past-events')
+      .then(res => res.json())
+      .then(data => { if (data.success) setPastEvents(data.pastEvents); })
+      .catch(e => console.error("Error syncing past events:", e));
+
+    fetch('/api/past-evaluations')
+      .then(res => res.json())
+      .then(data => { if (data.success) setEvaluations(data.evaluations); })
+      .catch(e => console.error("Error syncing evaluations:", e));
+
+    fetch('/api/attendance')
+      .then(res => res.json())
+      .then(data => { if (data.success) setAttendanceRecords(data.attendance); })
+      .catch(e => console.error("Error syncing attendance records:", e));
+  };
+
+  useEffect(() => {
+    syncDatabase();
+  }, [refreshTrigger, kioskStep]);
+
+  useEffect(() => {
+    if (terminalBottomRef.current) {
+      terminalBottomRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [terminalHistory]);
+
+  // AUTOMATIC PROFILE POINTS & REWARDS DISCOVERY FROM SERVER DB
+  useEffect(() => {
+    if (!loggedInStudent.id || students.length === 0) return;
+    const found = students.find(s => s.id.trim().toLowerCase() === loggedInStudent.id.trim().toLowerCase());
+    if (found) {
+      if (
+        found.points !== loggedInStudent.points ||
+        found.name !== loggedInStudent.name ||
+        found.college !== loggedInStudent.college ||
+        found.program !== loggedInStudent.program ||
+        found.year !== loggedInStudent.year ||
+        JSON.stringify(found.redeemedRewards || []) !== JSON.stringify(loggedInStudent.redeemedRewards || [])
+      ) {
+        setLoggedInStudent(prev => ({
+          ...prev,
+          name: found.name,
+          college: found.college,
+          program: found.program,
+          year: found.year,
+          points: found.points ?? 0,
+          redeemedRewards: found.redeemedRewards ?? []
+        }));
+        addTerminalLine(`Discovered profile match! Loaded ${found.name} (${found.points ?? 0} pts accumulated)`);
+      }
+    }
+  }, [loggedInStudent.id, students]);
+
+  // Handle auto-fill and validation lookup for attendance student id (like 24-1058)
+  useEffect(() => {
+    if (!attendanceStudentId) return;
+    const cleanId = attendanceStudentId.trim().toLowerCase().replace(/[^a-zA-Z0-9]/g, '');
+    if (!cleanId) return;
+    const found = students.find(s => {
+      const cleanDb = s.id.trim().toLowerCase().replace(/[^a-zA-Z0-9]/g, '');
+      return s.id.trim().toLowerCase() === attendanceStudentId.trim().toLowerCase() || cleanDb === cleanId;
+    });
+    if (found) {
+      setAttendanceStudentName(found.name);
+      setAttendanceCollege(found.college);
+      setAttendanceYear(found.year || 1);
+    }
+  }, [attendanceStudentId, students]);
+
+  const addTerminalLine = (line: string) => {
+    setTerminalHistory(prev => [...prev.slice(-30), `> ${line}`]);
+  };
+
+  // Webcam camera handlers with auto-fallback
+  const startCamera = async () => {
+    try {
+      setAttendanceMessage(null);
+      setIsCameraActive(true);
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 320, height: 240 } });
+      mediaStreamRef.current = stream;
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+      }
+      addTerminalLine("Live Kiosk Camera Feed loaded successfully.");
+    } catch (err: any) {
+      console.warn("Camera hardware or browser sandbox blocked permission:", err);
+      setIsCameraActive(false);
+      addTerminalLine(`Camera failed: ${err.message || 'Sandbox restriction'}. Use custom mock selfie or file upload.`);
+      setAttendanceMessage({ text: "Standard browser camera permission is blocked by container/iframe sandbox, but you can select our high-fidelity pre-rendered mock selfies or upload a photo below!", success: false });
+    }
+  };
+
+  const stopCamera = () => {
+    if (mediaStreamRef.current) {
+      mediaStreamRef.current.getTracks().forEach(track => track.stop());
+      mediaStreamRef.current = null;
+    }
+    setIsCameraActive(false);
+  };
+
+  const captureSnapshot = () => {
+    if (videoRef.current) {
+      const canvas = document.createElement('canvas');
+      canvas.width = 320;
+      canvas.height = 240;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.drawImage(videoRef.current, 0, 0, 320, 240);
+        const dataUrl = canvas.toDataURL('image/jpeg');
+        setAttendanceProof(dataUrl);
+        addTerminalLine("Selfie snapshot saved to profile draft.");
+        stopCamera();
+      }
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      if (mediaStreamRef.current) {
+        mediaStreamRef.current.getTracks().forEach(track => track.stop());
+      }
+    };
+  }, []);
+
+  // When leaving the attendance step, always turn off camera
+  useEffect(() => {
+    if (kioskStep !== 'attendance') {
+      stopCamera();
+    }
+  }, [kioskStep]);
+
+  const isProfileIncomplete = 
+    !loggedInStudent.id?.trim() || 
+    !loggedInStudent.name?.trim() || 
+    !loggedInStudent.college?.trim() || 
+    !loggedInStudent.year;
+
+  const openProfileUpdateModal = () => {
+    setEditStudentId(loggedInStudent.id || '');
+    setEditStudentName(loggedInStudent.name || '');
+    setEditStudentCollege(loggedInStudent.college || 'BSINFO TECH');
+    setEditStudentProgram(loggedInStudent.program || '');
+    setEditStudentYear(loggedInStudent.year || 1);
+    setIsProfileUpdateModalOpen(true);
+    playBeep(1100, 0.05);
+  };
+
+  const saveProfileUpdate = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editStudentId.trim() || !editStudentName.trim() || !editStudentCollege.trim()) {
+      alert("Please fill out Student ID, Name, and Course Department.");
+      return;
+    }
+    setLoggedInStudent(prev => ({
+      ...prev,
+      id: editStudentId.trim(),
+      name: editStudentName.trim(),
+      college: editStudentCollege,
+      program: editStudentProgram.trim() || `${editStudentCollege} Student`,
+      year: Number(editStudentYear)
+    }));
+    setIsProfileUpdateModalOpen(false);
+    playBeep(1300, 0.15);
+    addTerminalLine(`SECURE PROFILE UPDATE: Authorized changes saved for ${editStudentName}.`);
+  };
+
+  // MENU INTERACTIVE CLICKS
+  const selectMenuOption = (opt: number) => {
+    if (opt === 1) {
+      setKioskStep('upcoming');
+      setSelectedUpcomingId(null);
+      playBeep(1000, 0.1);
+      addTerminalLine(`Displaying upcoming announcement board registry. Enter index or type BACK.`);
+    } else if (opt === 2) {
+      setKioskStep('past_select');
+      playBeep(1000, 0.1);
+      const eligible = pastEvents.filter(e => e.colleges_participated.includes(loggedInStudent.college));
+      addTerminalLine(`Showing ${eligible.length} evaluable events for dept ${loggedInStudent.college}. Choose event.`);
+    } else if (opt === 3) {
+      setAttendanceStudentId(loggedInStudent.id);
+      setAttendanceStudentName(loggedInStudent.name);
+      setAttendanceCollege(loggedInStudent.college);
+      setKioskStep('attendance');
+      playBeep(1000, 0.1);
+      addTerminalLine(`Accessing Event Attendance Check-In Portal. Verify your details, choose your event, and provide proof!`);
+    } else if (opt === 4) {
+      setKioskStep('rewards');
+      playBeep(1000, 0.1);
+      addTerminalLine(`Entering WVSU-LC Student Rewards Store. Redeem your hard-earned civic engagement points here!`);
+    }
+  };
+
+  // SUBMIT EVALUATION REVIEWS
+  const submitWizardData = () => {
+    if (!selectedPastEvent) return;
+    setReportLoading(true);
+    addTerminalLine("Submitting secure evaluations packet to central OSAS server...");
+
+    const payload = {
+      student_id: loggedInStudent.id || 'anonymous-kiosk',
+      college: loggedInStudent.college || 'BSINFO TECH',
+      event_id: selectedPastEvent.id,
+      ...wizardAnswers
+    };
+
+    fetch('/api/submit-evaluation', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    })
+      .then(res => res.json())
+      .then(data => {
+        setReportLoading(false);
+        if (data.success) {
+          setCompletedCollegeCount(data.collegeCount);
+          setCompletedCampusCount(data.campusTotal);
+          setKioskStep('completed');
+          playBeep(1400, 0.35);
+          syncDatabase();
+          addTerminalLine(`Submission ID ${data.evaluation.id} filed under ${payload.college} channel successfully!`);
+        } else {
+          addTerminalLine(`PACKET ERROR: File reject. ${data.error}`);
+        }
+      })
+      .catch(err => {
+        setReportLoading(false);
+        addTerminalLine(`TRANSMISSION FAILURE: Server offline. ${err.message}`);
+      });
+  };
+
+  // SUBMIT ATTENDANCE LOG RECORD
+  const submitAttendanceCheckIn = () => {
+    if (!attendanceStudentId.trim()) {
+      setAttendanceMessage({ text: "Please enter your Student Registration ID.", success: false });
+      return;
+    }
+    if (!attendanceStudentName.trim()) {
+      setAttendanceMessage({ text: "Please enter your Student Full Name.", success: false });
+      return;
+    }
+    if (!attendanceEventId) {
+      setAttendanceMessage({ text: "Please select an event for check-in validation.", success: false });
+      return;
+    }
+    if (!attendanceProof) {
+      setAttendanceMessage({ text: "Please provide a selfie snapshot or photographic proof file to submit.", success: false });
+      return;
+    }
+
+    setIsSubmittingAttendance(true);
+    setAttendanceMessage(null);
+    addTerminalLine("Uploading attendance record & computing reward points credit...");
+
+    // Find any matching registered student
+    const matched = students.find(s => {
+      const cleanDb = s.id.trim().toLowerCase().replace(/[^a-zA-Z0-9]/g, '');
+      const cleanInput = attendanceStudentId.trim().toLowerCase().replace(/[^a-zA-Z0-9]/g, '');
+      return s.id.trim().toLowerCase() === attendanceStudentId.trim().toLowerCase() || cleanDb === cleanInput;
+    });
+
+    const payload = {
+      student: {
+        id: attendanceStudentId.trim(),
+        name: attendanceStudentName.trim(),
+        college: attendanceCollege || (matched ? matched.college : 'BSINFO TECH'),
+        program: matched?.program || `${attendanceCollege || 'BSINFO TECH'} Student`,
+        year: Number(attendanceYear) || matched?.year || 1
+      },
+      event_id: attendanceEventId,
+      proof_image: attendanceProof
+    };
+
+    fetch('/api/attendance', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    })
+      .then(res => res.json())
+      .then(data => {
+        setIsSubmittingAttendance(false);
+        if (data.success) {
+          playBeep(1400, 0.4);
+          setAttendanceMessage({ text: `Success! Attendance logged. You have earned +50 points! Current balance: ${data.student.points} PTS.`, success: true });
+          addTerminalLine(`SUCCESS: Attendance logged for ${data.student.name}. +50 PTS credited.`);
+          
+          // Clear snapshot on success
+          setAttendanceProof('');
+
+          // Force local active student profile upgrade ("name card changes")
+          setLoggedInStudent({
+            id: data.student.id,
+            name: data.student.name,
+            college: data.student.college,
+            program: data.student.program || `${data.student.college} Student`,
+            year: data.student.year || 1,
+            points: data.student.points,
+            redeemedRewards: data.student.redeemedRewards || []
+          });
+
+          syncDatabase();
+        } else {
+          playBeep(400, 0.3);
+          setAttendanceMessage({ text: `ERROR: ${data.error || 'Unable to register.'}`, success: false });
+          addTerminalLine(`REJECTED: Check-In failed. ${data.error}`);
+        }
+      })
+      .catch(err => {
+        setIsSubmittingAttendance(false);
+        playBeep(400, 0.3);
+        setAttendanceMessage({ text: `Network error: ${err.message}`, success: false });
+        addTerminalLine(`NETWORK ERROR: ${err.message}`);
+      });
+  };
+
+  // HANDLE REWARD ITEMS REDEMPTION
+  const handleRedeemReward = (reward: RewardItem) => {
+    // Validation of the department of that student
+    const studentDept = loggedInStudent.college;
+    if (!studentDept || !['BSINFO TECH', 'BSED', 'BSIT', 'BSHM'].includes(studentDept)) {
+      setRewardsError(`Redemption Rejected: You must belong to a valid college department (BSINFO TECH, BSED, BSIT, or BSHM) to claim rewards.`);
+      setRewardsSuccess('');
+      playBeep(400, 0.25);
+      addTerminalLine(`REJECTION: Invalid college department (${studentDept || 'None'}) for reward claim.`);
+      return;
+    }
+
+    // Specific reward department eligibility validation on client
+    if (reward.id === 'REW-2' && !['BSINFO TECH', 'BSED', 'BSIT'].includes(studentDept)) {
+      setRewardsError(`The College Pride Stickers Pack is restricted to BSINFO TECH, BSED, and BSIT departments. Your department (${studentDept}) is not eligible.`);
+      setRewardsSuccess('');
+      playBeep(400, 0.25);
+      addTerminalLine(`REJECTION: Department ${studentDept} is not eligible for ${reward.title}.`);
+      return;
+    }
+
+    if (reward.id === 'REW-3' && !['BSINFO TECH', 'BSIT'].includes(studentDept)) {
+      setRewardsError(`The WVSU-LC Developer Cap is restricted to tech-oriented majors (BSINFO TECH, BSIT). Your department (${studentDept}) is not eligible.`);
+      setRewardsSuccess('');
+      playBeep(400, 0.25);
+      addTerminalLine(`REJECTION: Department ${studentDept} is not eligible for ${reward.title}.`);
+      return;
+    }
+
+    if ((loggedInStudent.points ?? 0) < reward.pointsCost) {
+      setRewardsError(`Insufficient points. You need ${reward.pointsCost} PTS to redeem this reward, but you only have ${loggedInStudent.points ?? 0} PTS.`);
+      setRewardsSuccess('');
+      playBeep(400, 0.25);
+      addTerminalLine(`REJECTION: Insufficient point assets to claim ${reward.title}.`);
+      return;
+    }
+
+    setIsRedeeming(true);
+    setRewardsError('');
+    setRewardsSuccess('');
+    addTerminalLine(`Processing reward redemption for ${reward.title} (-${reward.pointsCost} PTS)...`);
+
+    const payload = {
+      studentId: loggedInStudent.id,
+      rewardId: reward.id,
+      rewardTitle: reward.title,
+      pointsCost: reward.pointsCost,
+      college: studentDept
+    };
+
+    fetch('/api/students/redeem', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    })
+      .then(res => res.json())
+      .then(data => {
+        setIsRedeeming(false);
+        if (data.success) {
+          playBeep(1500, 0.5);
+          setRewardsSuccess(`Successfully redeemed ${reward.title}! Voucher Ticket: WVSU-${reward.id}-${Math.floor(1000 + Math.random() * 9000)} is valid. Present this to OSAS/SSC booth to claim your item.`);
+          addTerminalLine(`SUCCESS: ${reward.title} claimed. Remaining points: ${data.student.points} PTS.`);
+          
+          setLoggedInStudent(prev => ({
+            ...prev,
+            points: data.student.points,
+            redeemedRewards: data.student.redeemedRewards || []
+          }));
+
+          syncDatabase();
+        } else {
+          setRewardsError(data.error || 'Redemption process was rejected by central registrar.');
+          playBeep(400, 0.3);
+          addTerminalLine(`REJECTED: ${data.error}`);
+        }
+      })
+      .catch(err => {
+        setIsRedeeming(false);
+        setRewardsError(`Network connection fault: ${err.message}`);
+        addTerminalLine(`NETWORK FAULT: ${err.message}`);
+      });
+  };
+
+  // WIZARD ANSWERS FLOW
+  const saveAnswerAndProceed = (questionIdx: number, value: any) => {
+    const keys = ['q1', 'q2', 'q3', 'q4', 'q5', 'q6', 'q7', 'q8', 'q9'];
+    const currentKey = keys[questionIdx];
+
+    setWizardAnswers(prev => ({ ...prev, [currentKey]: value }));
+    playBeep(1100, 0.05);
+    setAnswersFeedback("Feedback saved.");
+    setTimeout(() => setAnswersFeedback(''), 800);
+
+    if (questionIdx < 8) {
+      setCurrentQuestionIndex(prev => prev + 1);
+      const promptText = getQuestionPrompt(questionIdx + 1);
+      addTerminalLine(`[Recorded] Next -> ${promptText}`);
+    } else {
+      setKioskStep('confirm');
+      addTerminalLine("All ratings set. Confirm submission with YES or cancel with NO.");
+    }
+  };
+
+  const processWizardCmd = (val: string) => {
+    const idx = currentQuestionIndex;
+    let typedVal: any = val.trim();
+
+    if (idx >= 0 && idx <= 4) {
+      if (idx === 3 && val.toUpperCase() === 'N/A') {
+        typedVal = 'N/A';
+      } else {
+        const rating = parseInt(val);
+        if (isNaN(rating) || rating < 1 || rating > 5) {
+          addTerminalLine("Syntax Error! Specify scores from 1 to 5 (or N/A where applicable).");
+          return;
+        }
+        typedVal = rating;
+      }
+    } else if (idx === 5) {
+      const upper = val.toUpperCase();
+      if (upper !== 'YES' && upper !== 'MAYBE' && upper !== 'NO') {
+        addTerminalLine("Syntax Error! Specify YES / MAYBE / NO.");
+        return;
+      }
+      typedVal = upper;
+    } else if (idx === 6 || idx === 7 || idx === 8) {
+      if (idx === 8 && val.toUpperCase() === 'SKIP') {
+        typedVal = 'SKIP';
+      } else if (val.length > 200) {
+        addTerminalLine("Characters overflow! Please stay beneath 200 characters.");
+        return;
+      }
+    }
+
+    saveAnswerAndProceed(idx, typedVal);
+  };
+
+  const getQuestionPrompt = (qIdx: number): string => {
+    const prompts = [
+      "Q1: Rate overall event satisfaction [1=Poor, 5=Excellent]",
+      "Q2: Rate relevance to your academic program [1=Poor, 5=Excellent]",
+      "Q3: Rate logistics and planning quality [1=Poor, 5=Excellent]",
+      "Q4: Rate speakers / facilitators [1-5, or type N/A]",
+      "Q5: Rate physical venue comfort [1=Poor, 5=Excellent]",
+      "Q6: Attend similar events in the future? [YES / MAYBE / NO]",
+      "Q7: Highlight of the event? [Max 200 characters]",
+      "Q8: Improvement suggestions? [Max 200 characters]",
+      "Q9: Other comments? [Max 200 characters, or SKIP]"
+    ];
+    return prompts[qIdx];
+  };
+
+  // ADMIN LOGIN LOGIC
+  const handleAdminAuth = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!adminUsername.trim() || !adminPassword.trim()) return;
+
+    const matched = ADMIN_ACCOUNTS.find(acc => acc.username.toLowerCase() === adminUsername.trim().toLowerCase() && acc.password === adminPassword.trim());
+    if (matched) {
+      setIsAdminLoggedIn(true);
+      setCurrentAdminUser(matched);
+      setAdminAuthError('');
+      setAdminPassword('');
+      playBeep(1200, 0.15);
+      addTerminalLine(`ADMIN GRANTED: ${matched.name} logged in. Agency: ${matched.agency}`);
+    } else {
+      setAdminAuthError("Invalid Administrative Security Username or Passcode. Access denied.");
+      playBeep(400, 0.35);
+      addTerminalLine("ACCESS DENIED: Attempted unauthorized decryption of administrative portals.");
+    }
+  };
+
+  // KEYBOARD/KEYPAD TERMINAL HANDLER
+  const handleTerminalFormSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!terminalInput.trim()) return;
+    const cmd = terminalInput.trim();
+    setTerminalInput('');
+    addTerminalLine(cmd);
+    playBeep(850, 0.05);
+
+    if (kioskStep === 'greeting') {
+      if (cmd === '1') selectMenuOption(1);
+      else if (cmd === '2') selectMenuOption(2);
+      else if (cmd === '3') selectMenuOption(3);
+      else if (cmd === '4') selectMenuOption(4);
+      else if (cmd.toLowerCase() === 'admin') setActiveTab('admin');
+      else addTerminalLine("Error! Enter 1 (Announcements), 2 (Past Evaluations), 3 (Event Attendance), 4 (Rewards Store).");
+    } else if (kioskStep === 'attendance' || kioskStep === 'rewards') {
+      if (cmd.toLowerCase() === 'back') {
+        setKioskStep('greeting');
+        addTerminalLine("Returned to main menu.");
+      } else {
+        addTerminalLine("Type BACK to return to the greeting menu.");
+      }
+    } else if (kioskStep === 'upcoming') {
+      if (cmd.toLowerCase() === 'back') {
+        setKioskStep('greeting');
+        setSelectedUpcomingId(null);
+      } else {
+        const idx = parseInt(cmd);
+        if (idx >= 1 && idx <= upcomingEvents.length) {
+          setSelectedUpcomingId(upcomingEvents[idx - 1].id);
+        } else addTerminalLine("Announcements out of range. Enter range or type BACK.");
+      }
+    } else if (kioskStep === 'past_select') {
+      if (cmd.toLowerCase() === 'back') setKioskStep('greeting');
+      else {
+        const eligible = pastEvents.filter(e => e.colleges_participated.includes(loggedInStudent.college));
+        const idx = parseInt(cmd);
+        if (idx >= 1 && idx <= eligible.length) {
+          const selected = eligible[idx - 1];
+          setSelectedPastEvent(selected);
+          setKioskStep('form');
+          setCurrentQuestionIndex(0);
+          addTerminalLine(`Initialized review form for ${selected.title}.`);
+        } else addTerminalLine("Range error. Choose within the filtered boundaries.");
+      }
+    } else if (kioskStep === 'form') {
+      processWizardCmd(cmd);
+    } else if (kioskStep === 'confirm') {
+      if (cmd.toLowerCase() === 'yes') submitWizardData();
+      else if (cmd.toLowerCase() === 'no') {
+        setKioskStep('greeting');
+        addTerminalLine("Evaluation packet discarded.");
+      } else addTerminalLine("Confirm your selection. Write YES or NO.");
+    } else if (kioskStep === 'completed') {
+      if (cmd.toLowerCase() === 'back') {
+        setKioskStep('greeting');
+        setWizardAnswers({ q1: 5, q2: 5, q3: 5, q4: 5, q5: 5, q6: 'YES', q7: '', q8: '', q9: '' });
+      }
+    }
+  };
+
+  const getDayAndGreeting = () => {
+    const hours = currentTime.getHours();
+    if (hours < 12) return 'Good Morning';
+    if (hours < 18) return 'Good Afternoon';
+    return 'Good Evening';
+  };
+
+  return (
+    <div id="root" className="min-h-screen bg-slate-50 flex flex-col antialiased text-slate-900 selection:bg-[#F2C811] selection:text-slate-950 font-sans p-4 md:p-8">
+      
+      {/* HEADER MASTER AREA */}
+      <header className="max-w-7xl w-full mx-auto bg-white border-4 border-slate-900 p-6 flex flex-col lg:flex-row items-start lg:items-center justify-between mb-8 shadow-[6px_6px_0px_0px_rgba(15,23,42,1)] relative overflow-hidden gap-4">
+        <div className="flex items-center gap-4 relative z-10">
+          <div className="p-3 bg-[#F2C811] border-2 border-slate-900 text-[#0B2B64] shadow-[3px_3px_0px_0px_rgba(15,23,42,1)]">
+            <School className="w-8 h-8 stroke-[2.5px]" />
+          </div>
+          <div>
+            <h1 className="text-2xl sm:text-3.5xl font-black tracking-tighter leading-none text-[#0B2B64] uppercase flex items-center">
+              {t('system_title')}
+            </h1>
+            <p className="text-[10px] font-black tracking-widest text-slate-400 uppercase mt-1">
+              {t('sub_title')}
+            </p>
+          </div>
+        </div>
+
+        {/* Language Selector + Tabs */}
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 relative z-10 w-full lg:w-auto">
+          {/* Elegant Language Selector */}
+          <div className="flex items-center gap-2 border-2 border-slate-900 bg-slate-50 px-3 py-2 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
+            <span className="text-[9px] font-black uppercase text-slate-500 tracking-wider">🌐 Language:</span>
+            <select
+              value={language}
+              onChange={(e) => {
+                setLanguage(e.target.value as any);
+                playBeep(900, 0.05);
+              }}
+              className="bg-transparent text-xs font-black uppercase focus:outline-none cursor-pointer text-[#0B2B64] border-none pr-2"
+            >
+              <option value="en">English (US)</option>
+              <option value="hil">Hiligaynon (Ilonggo)</option>
+              <option value="fil">Filipino (Tagalog)</option>
+            </select>
+          </div>
+
+          {/* Dynamic Dual Tab Switch */}
+          <div className="flex items-center gap-2 w-full sm:w-auto">
+            <button
+              onClick={() => { setActiveTab('kiosk'); playBeep(1000, 0.05); }}
+              className={`flex-1 sm:flex-initial py-2 px-6 rounded-none text-xs font-black uppercase tracking-wider transition-transform border-2 border-slate-900 shadow-[3px_3px_0px_0px_rgba(15,23,42,1)] cursor-pointer ${activeTab === 'kiosk' ? 'bg-[#F2C811] text-slate-900' : 'bg-white text-slate-600 hover:text-slate-900'}`}
+            >
+              {t('kiosk_console')}
+            </button>
+            <button
+              onClick={() => { setActiveTab('admin'); playBeep(1000, 0.05); }}
+              className={`flex-1 sm:flex-initial py-2 px-6 rounded-none text-xs font-black uppercase tracking-wider transition-transform border-2 border-slate-900 shadow-[3px_3px_0px_0px_rgba(15,23,42,1)] cursor-pointer ${activeTab === 'admin' ? 'bg-[#0B2B64] text-white' : 'bg-white text-slate-600 hover:text-slate-900'}`}
+            >
+              {t('admin_security')}
+            </button>
+          </div>
+        </div>
+      </header>
+
+      {/* CORE FRAME WORKSPACE */}
+      <main className="max-w-7xl w-full mx-auto flex-1 flex flex-col gap-8">
+        
+        {/* VIEW 1: KIOSK MODE INTERFACES */}
+        {activeTab === 'kiosk' && (
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+            
+            {/* LEFT COLUMN: ACTIVE STUDENT COMPILER SIDEBAR */}
+            <section className="lg:col-span-4 flex flex-col gap-6">
+              <div className="bg-white border-4 border-slate-900 p-6 flex flex-col relative shadow-[8px_8px_0px_0px_rgba(15,23,42,1)]">
+                <div className="absolute top-4 right-4 bg-[#F2C811] text-[#0B2B64] px-2.5 py-0.5 text-[9px] font-black uppercase border-2 border-slate-900">
+                  {t('active_profile')}
+                </div>
+                
+                <h2 className="text-3xl font-black leading-none mb-2 text-[#0B2B64] italic">
+                  Hi, {loggedInStudent.name.split(' ')[0] || "Student"}!
+                </h2>
+                <p className="text-[10px] uppercase font-black text-slate-400 mb-3 tracking-wider leading-relaxed">
+                  {t('sidebar_desc')}
+                </p>
+
+                {/* Accumulated Points Panel */}
+                <div className="bg-[#F2C811]/10 border-2 border-[#F2C811] p-3 mb-4 flex items-center justify-between shadow-[2px_2px_0px_0px_rgba(15,23,42,1)]">
+                  <div className="flex items-center gap-2">
+                    <div className="p-1.5 bg-[#F2C811] text-[#0B2B64] font-black border border-slate-900">
+                      <Coins className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <span className="text-[8px] font-black uppercase text-slate-500 block leading-none">{t('points')}</span>
+                      <span className="text-lg font-black font-mono text-[#0B2B64]">{loggedInStudent.points ?? 0} PTS</span>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => selectMenuOption(4)}
+                    className="bg-[#0B2B64] text-[#F2C811] hover:bg-slate-900 border-2 border-slate-900 px-2.5 py-1 text-[8px] font-black uppercase tracking-wider cursor-pointer shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] text-center transition-transform active:translate-y-0.5"
+                  >
+                    {t('redeem')}
+                  </button>
+                </div>
+
+                {/* Claimed Rewards Section */}
+                {loggedInStudent.redeemedRewards && loggedInStudent.redeemedRewards.length > 0 && (
+                  <div className="mb-4 bg-slate-50 border-2 border-slate-200 p-2 text-[9px] max-h-24 overflow-y-auto">
+                    <span className="font-black text-slate-600 block mb-1 uppercase tracking-wider">🎁 {t('redeemed_perks')}:</span>
+                    <ul className="list-disc pl-3.5 space-y-0.5 text-slate-700 font-mono text-[8.5px] leading-tight">
+                      {loggedInStudent.redeemedRewards.map((reward, i) => (
+                        <li key={i}>{reward}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                
+                <div className="space-y-4 pt-3 border-t-2 border-slate-100">
+                  {loggedInStudent.lastAttendedEvent && (
+                    <div className="mb-2 bg-emerald-50 border-2 border-emerald-500 p-3 shadow-[2px_2px_0px_0px_rgba(16,185,129,0.3)]">
+                      <span className="text-[8px] font-black uppercase text-emerald-700 block leading-none">Last Active Check-In</span>
+                      <span className="text-xs font-black text-emerald-950 block mt-1 truncate">{loggedInStudent.lastAttendedEvent}</span>
+                      <span className="text-[8px] font-mono text-emerald-600 block mt-0.5">{loggedInStudent.lastAttendedTimestamp}</span>
+                    </div>
+                  )}
+
+                  <div>
+                    <label className="text-[9px] font-black uppercase text-slate-500 block mb-1">{t('student_name')}</label>
+                    <input
+                      type="text"
+                      disabled
+                      readOnly
+                      value={loggedInStudent.name}
+                      className="w-full bg-slate-100 border-2 border-slate-300 font-mono font-bold text-xs p-2.5 text-slate-500 outline-none select-none"
+                      placeholder="e.g. Maria Santos"
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-[9px] font-black uppercase text-slate-500 block mb-1">{t('student_id')}</label>
+                      <input
+                        type="text"
+                        disabled
+                        readOnly
+                        value={loggedInStudent.id}
+                        className="w-full bg-slate-100 border-2 border-slate-300 font-mono font-bold text-xs p-2.5 text-slate-500 outline-none select-none"
+                        placeholder="e.g. 2021-0001"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[9px] font-black uppercase text-slate-500 block mb-1">{t('college_dept')}</label>
+                      <input
+                        type="text"
+                        disabled
+                        readOnly
+                        value={loggedInStudent.college}
+                        className="w-full bg-slate-100 border-2 border-slate-300 font-mono font-bold text-xs p-2.5 text-slate-500 outline-none select-none"
+                      />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-3 gap-3">
+                    <div className="col-span-2">
+                      <label className="text-[9px] font-black uppercase text-slate-500 block mb-1">{t('degree_prog')}</label>
+                      <input
+                        type="text"
+                        disabled
+                        readOnly
+                        value={loggedInStudent.program}
+                        className="w-full bg-slate-100 border-2 border-slate-300 font-mono font-bold text-xs p-2.5 text-slate-500 outline-none select-none"
+                        placeholder="e.g. BS IT"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[9px] font-black uppercase text-slate-500 block mb-1">{t('year_level')}</label>
+                      <input
+                        type="text"
+                        disabled
+                        readOnly
+                        value={loggedInStudent.year ? `${loggedInStudent.year} Yr` : ''}
+                        className="w-full bg-slate-100 border-2 border-slate-300 font-mono font-bold text-xs p-2.5 text-slate-500 outline-none select-none"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="pt-2">
+                    <button
+                      onClick={openProfileUpdateModal}
+                      className="w-full py-2.5 px-4 bg-[#0B2B64] hover:bg-slate-900 text-[#F2C811] text-xs font-black uppercase tracking-wider border-2 border-slate-900 shadow-[4px_4px_0px_0px_rgba(15,23,42,1)] cursor-pointer flex items-center justify-center gap-2 transition-transform active:translate-y-0.5"
+                    >
+                      <span>🔒 {t('update_profile_button') || "Authorized Profile Update"}</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Mode indicator */}
+              <div className="bg-[#0B2B64] text-[#F2C811] p-5 border-4 border-slate-900 shadow-[8px_8px_0px_0px_rgba(15,23,42,1)]">
+                <p className="text-[9px] font-black uppercase tracking-widest mb-1 opacity-90">Kiosk operational status</p>
+                <p className="text-xs text-white font-black leading-snug">
+                  All systems green. Type your variables in the sidebar form and select upcoming or past events in the workspace.
+                </p>
+              </div>
+            </section>
+
+            {/* RIGHT COLUMN: INTERACTIVE WORKSPACE */}
+            <section className="lg:col-span-8 flex flex-col gap-6">
+              <div className="bg-white border-4 border-slate-900 relative shadow-[8px_8px_0px_0px_rgba(15,23,42,1)] flex flex-col min-h-[520px]">
+                
+                {/* Visual frame header decoration */}
+                <div className="bg-slate-900 text-slate-100 p-3 px-6 flex items-center justify-between border-b-4 border-slate-900">
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-3 h-3 rounded-full bg-red-600"></span>
+                    <span className="w-3 h-3 rounded-full bg-[#F2C811]"></span>
+                    <span className="w-3 h-3 rounded-full bg-emerald-600"></span>
+                    <span className="text-[10px] font-mono text-slate-400 font-black ml-2 uppercase">WVSU_LC://KIOSK_SHELL</span>
+                  </div>
+                  <span className="text-[10px] font-black uppercase bg-[#F2C811] text-[#0B2B64] px-2 py-0.5 border border-slate-900">
+                    Step: {kioskStep}
+                  </span>
+                </div>
+
+                {/* STEP GREETING HUB */}
+                {kioskStep === 'greeting' && (
+                  <div className="p-8 space-y-6 flex-1 flex flex-col justify-between">
+                    <div>
+                      <h3 className="text-xl font-bold uppercase tracking-tight text-[#0B2B64] mb-1">
+                        {getDayAndGreeting()}, Scholar!
+                      </h3>
+                      <p className="text-xs text-slate-500 font-bold mb-6">
+                        West Visayas State University - Lambunao Campus welcomes you to our digital kiosk terminal. Select any module command below:
+                      </p>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                        <button
+                          onClick={() => selectMenuOption(1)}
+                          className="group bg-white border-4 border-slate-900 p-6 shadow-[6px_6px_0px_0px_rgba(15,23,42,1)] hover:bg-indigo-50 text-left transition-colors cursor-pointer"
+                        >
+                          <div className="bg-[#0B2B64] text-white w-10 h-10 flex items-center justify-center font-mono font-black text-xl border-2 border-slate-900 shadow-[2px_2px_0px_0px_rgba(242,200,17,1)]">
+                            1
+                          </div>
+                          <h4 className="text-2xl font-black uppercase text-[#0B2B64] mt-6">Announcements</h4>
+                          <p className="text-[10px] text-slate-500 font-bold uppercase mt-1">Check current campus schedules & foundation details</p>
+                        </button>
+
+                        <button
+                          onClick={() => selectMenuOption(2)}
+                          className="group bg-white border-4 border-slate-900 p-6 shadow-[6px_6px_0px_0px_rgba(15,23,42,1)] hover:bg-yellow-50 text-left transition-colors cursor-pointer"
+                        >
+                          <div className="bg-[#0B2B64] text-white w-10 h-10 flex items-center justify-center font-mono font-black text-xl border-2 border-slate-900 shadow-[2px_2px_0px_0px_rgba(242,200,17,1)]">
+                            2
+                          </div>
+                          <h4 className="text-2xl font-black uppercase text-slate-900 mt-6">Evaluate past events</h4>
+                          <p className="text-[10px] text-slate-500 font-bold uppercase mt-1">Rate past convocations and submit feedback</p>
+                        </button>
+
+                        <button
+                          onClick={() => selectMenuOption(3)}
+                          className="group bg-white border-4 border-slate-900 p-6 shadow-[6px_6px_0px_0px_rgba(15,23,42,1)] hover:bg-emerald-50 text-left transition-colors cursor-pointer"
+                        >
+                          <div className="bg-emerald-600 text-white w-10 h-10 flex items-center justify-center font-mono font-black text-xl border-2 border-slate-900 shadow-[2px_2px_0px_0px_rgba(242,200,17,1)]">
+                            3
+                          </div>
+                          <h4 className="text-2xl font-black uppercase text-emerald-800 mt-6 flex items-center gap-2">
+                            Check-In Attendance
+                            <span className="text-[9px] font-black tracking-widest bg-emerald-100 text-emerald-800 border border-emerald-300 py-0.5 px-1.5 uppercase rounded-none shrink-0">+50 PTS</span>
+                          </h4>
+                          <p className="text-[10px] text-slate-500 font-bold uppercase mt-1">Log attendance for current/past events with selfie proof & claim points</p>
+                        </button>
+
+                        <button
+                          onClick={() => selectMenuOption(4)}
+                          className="group bg-white border-4 border-slate-900 p-6 shadow-[6px_6px_0px_0px_rgba(15,23,42,1)] hover:bg-amber-50 text-left transition-colors cursor-pointer"
+                        >
+                          <div className="bg-amber-500 text-white w-10 h-10 flex items-center justify-center font-mono font-black text-xl border-2 border-slate-900 shadow-[2px_2px_0px_0px_rgba(242,200,17,1)]">
+                            4
+                          </div>
+                          <h4 className="text-2xl font-black uppercase text-amber-800 mt-6 flex items-center gap-2">
+                            Rewards Store
+                            <span className="text-[9px] font-black tracking-widest bg-amber-100 text-amber-850 border border-amber-300 py-0.5 px-1.5 uppercase rounded-none shrink-0">REDEEM</span>
+                          </h4>
+                          <p className="text-[10px] text-slate-500 font-bold uppercase mt-1">Redeem your accumulated points for exclusive campus custom merchandise</p>
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Featured card banner */}
+                    <div className="bg-slate-900 text-white p-6 border-4 border-slate-900 shadow-[6px_6px_0px_0px_rgba(15,23,42,1)] relative overflow-hidden min-h-[160px] flex flex-col justify-between">
+                      <div className="relative z-10">
+                        <p className="text-[9px] font-black text-[#F2C811] uppercase tracking-widest mb-1">FOUNDATION PREVIEW ANNOUNCEMENT</p>
+                        <h4 className="text-3xl font-black italic tracking-tighter text-white">WVSU ANNUAL COLLEGE FESTIVAL 2025</h4>
+                        <p className="text-[10px] font-semibold text-slate-400 mt-2">Opening line ceremonies begin July 18, 2025 at WVSU-LC Quadrangle plaza.</p>
+                      </div>
+                      <div className="absolute right-[-40px] bottom-[-40px] text-[10rem] font-black text-slate-800 opacity-20 italic select-none pointer-events-none">
+                        WVSU
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* STEP ATTENDANCE CHECK-IN PORTAL */}
+                {kioskStep === 'attendance' && (
+                  <div className="p-8 space-y-6 flex-1 flex flex-col justify-between">
+                    <div>
+                      <div className="flex justify-between items-center border-b-4 border-slate-900 pb-3 mb-4">
+                        <h3 className="text-xl font-black uppercase text-slate-900 flex items-center gap-2">
+                          <Camera className="w-5 h-5 text-emerald-600" />
+                          {t('check_in')}
+                        </h3>
+                        <button
+                          onClick={() => { setKioskStep('greeting'); setAttendanceMessage(null); }}
+                          className="bg-white border-2 border-slate-900 text-xs font-black uppercase tracking-wider py-1.5 px-4 cursor-pointer hover:bg-slate-50"
+                        >
+                          {t('back_to_menu')}
+                        </button>
+                      </div>
+
+                      <p className="text-xs text-slate-500 font-bold mb-6">
+                        Log your attendance below for current or past events. Provide your Student ID, Name, and photographic proof to verify your presence and claim <span className="text-emerald-600 font-extrabold">+50 Campus Points</span>!
+                      </p>
+
+                      {/* Status Messages */}
+                      {attendanceMessage && (
+                        <div className={`p-4 mb-6 border-2 font-bold text-xs flex items-start gap-2.5 rounded-none ${attendanceMessage.success ? 'bg-emerald-50 border-emerald-500 text-emerald-800' : 'bg-red-50 border-red-500 text-red-800'}`}>
+                          {attendanceMessage.success ? <CheckCircle className="w-5 h-5 shrink-0" /> : <AlertTriangle className="w-5 h-5 shrink-0" />}
+                          <div>
+                            <p className="font-black uppercase">{attendanceMessage.success ? 'CHECK-IN CONFIRMED' : 'VALIDATION REJECTED'}</p>
+                            <p className="mt-1 leading-relaxed">{attendanceMessage.text}</p>
+                          </div>
+                        </div>
+                      )}
+
+                      <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-start">
+                        {/* LEFT FORM BLOCK */}
+                        <div className="md:col-span-7 space-y-4">
+                          
+                          {/* Student ID & Name form input container (Prioritizing camera requirements) */}
+                          <div className="bg-slate-50 p-4 border-2 border-slate-900 space-y-3.5 shadow-[3px_3px_0px_0px_rgba(15,23,42,1)]">
+                            <span className="text-[10px] font-black uppercase text-[#0B2B64] block leading-none">1. Required Student Credentials</span>
+                            
+                            <div className="grid grid-cols-2 gap-3">
+                              <div>
+                                <label className="text-[9px] font-black uppercase text-slate-500 block mb-1">{t('student_id')}</label>
+                                <input
+                                  type="text"
+                                  value={attendanceStudentId}
+                                  onChange={(e) => {
+                                    setAttendanceStudentId(e.target.value);
+                                    setAttendanceMessage(null);
+                                  }}
+                                  placeholder="e.g. 24-1058"
+                                  className="w-full bg-white border-2 border-slate-900 font-mono font-bold text-xs p-2.5 focus:outline-none focus:border-indigo-600"
+                                />
+                              </div>
+                              <div>
+                                <label className="text-[9px] font-black uppercase text-slate-500 block mb-1">{t('student_name')}</label>
+                                <input
+                                  type="text"
+                                  value={attendanceStudentName}
+                                  onChange={(e) => {
+                                    setAttendanceStudentName(e.target.value);
+                                    setAttendanceMessage(null);
+                                  }}
+                                  placeholder="e.g. Maria Santos"
+                                  className="w-full bg-white border-2 border-slate-900 font-mono font-bold text-xs p-2.5 focus:outline-none focus:border-indigo-600"
+                                />
+                              </div>
+                            </div>
+
+                            {/* Department display/choice & Year Level selection in a grid */}
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                              <div>
+                                <label className="text-[9px] font-black uppercase text-slate-500 block mb-1">{t('college_dept')}</label>
+                                <select
+                                  value={attendanceCollege}
+                                  onChange={(e) => setAttendanceCollege(e.target.value)}
+                                  className="w-full bg-white border-2 border-slate-900 font-mono font-bold text-xs p-2.5 focus:outline-none focus:border-indigo-600"
+                                >
+                                  {COLLEGES.map(c => (
+                                    <option key={c.code} value={c.code}>{c.code} - {c.name}</option>
+                                  ))}
+                                </select>
+                              </div>
+                              <div>
+                                <label className="text-[9px] font-black uppercase text-slate-500 block mb-1">Year Level</label>
+                                <select
+                                  value={attendanceYear}
+                                  onChange={(e) => setAttendanceYear(Number(e.target.value))}
+                                  className="w-full bg-white border-2 border-slate-900 font-mono font-bold text-xs p-2.5 focus:outline-none focus:border-indigo-600"
+                                >
+                                  <option value={1}>1st Year</option>
+                                  <option value={2}>2nd Year</option>
+                                  <option value={3}>3rd Year</option>
+                                  <option value={4}>4th Year</option>
+                                </select>
+                              </div>
+                            </div>
+                            
+                            {students.find(s => {
+                              const cleanDb = s.id.trim().toLowerCase().replace(/[^a-zA-Z0-9]/g, '');
+                              const cleanInput = attendanceStudentId.trim().toLowerCase().replace(/[^a-zA-Z0-9]/g, '');
+                              return s.id.trim().toLowerCase() === attendanceStudentId.trim().toLowerCase() || cleanDb === cleanInput;
+                            }) ? (
+                              <span className="text-[8.5px] font-black uppercase text-green-600 mt-1 block">✅ Registered Student Profile Detected! Department unlocked for updates.</span>
+                            ) : (
+                              <span className="text-[8.5px] font-black uppercase text-amber-600 mt-1 block">ℹ️ New Student Entry. Select department & year level to register and check-in.</span>
+                            )}
+                          </div>
+
+                          <div>
+                            <label className="text-[10px] font-black uppercase text-slate-500 block mb-1.5">2. Select Target Event</label>
+                            <select
+                              value={attendanceEventId}
+                              onChange={(e) => {
+                                setAttendanceEventId(e.target.value);
+                                setAttendanceMessage(null);
+                              }}
+                              className="w-full bg-slate-50 border-2 border-slate-900 font-bold text-xs p-3 focus:outline-none focus:bg-white"
+                            >
+                              <option value="">-- Choose Event to Check-In --</option>
+                              <optgroup label="Upcoming Campus Schedules">
+                                {upcomingEvents.map(evt => (
+                                  <option key={evt.id} value={evt.id}>{evt.title} ({evt.date})</option>
+                                ))}
+                              </optgroup>
+                              <optgroup label="Past Events Evaluables">
+                                {pastEvents.map(evt => (
+                                  <option key={evt.id} value={evt.id}>{evt.title} ({evt.date})</option>
+                                ))}
+                              </optgroup>
+                            </select>
+                          </div>
+
+                          <div className="border-2 border-dashed border-slate-300 p-4 bg-slate-50 space-y-4">
+                            <span className="text-[10px] font-black uppercase text-slate-500 block">3. Attendance Proof Selfie</span>
+                            
+                            {/* CAMERA INTERACTIVE SCREEN */}
+                            {isCameraActive ? (
+                              <div className="bg-slate-900 border-2 border-slate-900 p-2 flex flex-col items-center">
+                                <video
+                                  ref={videoRef}
+                                  autoPlay
+                                  playsInline
+                                  className="w-full max-w-xs aspect-video bg-black border-2 border-white mb-2"
+                                />
+                                <div className="flex gap-2 w-full justify-center">
+                                  <button
+                                    onClick={captureSnapshot}
+                                    className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs px-4 py-2 border-2 border-slate-900 uppercase cursor-pointer"
+                                  >
+                                    Take Snapshot
+                                  </button>
+                                  <button
+                                    onClick={stopCamera}
+                                    className="bg-slate-600 hover:bg-slate-700 text-white font-bold text-xs px-4 py-2 border-2 border-slate-900 uppercase cursor-pointer"
+                                  >
+                                    Cancel
+                                  </button>
+                                </div>
+                              </div>
+                            ) : attendanceProof ? (
+                              <div className="flex flex-col items-center border-2 border-slate-900 p-2 bg-white">
+                                <p className="text-[9px] font-bold text-slate-400 mb-1">PROOFS_SNAPSHOT_DRAFT.JPG</p>
+                                <img
+                                  src={attendanceProof}
+                                  alt="Attendance Proof Draft"
+                                  className="w-full max-w-xs aspect-video object-cover border-2 border-slate-900"
+                                />
+                                <button
+                                  onClick={() => setAttendanceProof('')}
+                                  className="mt-2 bg-red-50 text-red-600 hover:bg-red-100 font-bold text-[10px] px-3 py-1 border border-red-300 uppercase cursor-pointer"
+                                >
+                                  Retake / Discard Photo
+                                </button>
+                              </div>
+                            ) : (
+                              <div className="space-y-3">
+                                {/* Option A: Webcam Activation */}
+                                <button
+                                  onClick={startCamera}
+                                  className="w-full bg-white hover:bg-slate-50 border-2 border-slate-900 text-xs font-black uppercase py-2.5 px-4 flex items-center justify-center gap-2 cursor-pointer shadow-[3px_3px_0px_0px_rgba(15,23,42,1)]"
+                                >
+                                  <Camera className="w-4 h-4 text-emerald-600" />
+                                  Use Live Kiosk Camera
+                                </button>
+
+                                {/* Option B: File uploader */}
+                                <div className="relative">
+                                  <label className="w-full bg-white hover:bg-slate-50 border-2 border-slate-900 text-xs font-black uppercase py-2.5 px-4 flex items-center justify-center gap-2 cursor-pointer shadow-[3px_3px_0px_0px_rgba(15,23,42,1)]">
+                                    <Upload className="w-4 h-4 text-indigo-600" />
+                                    Upload Proof Image File
+                                    <input
+                                      type="file"
+                                      accept="image/*"
+                                      className="hidden"
+                                      onChange={(e) => {
+                                        const file = e.target.files?.[0];
+                                        if (file) {
+                                          const reader = new FileReader();
+                                          reader.onloadend = () => {
+                                            setAttendanceProof(reader.result as string);
+                                            addTerminalLine("Proof image successfully loaded from local directory.");
+                                          };
+                                          reader.readAsDataURL(file);
+                                        }
+                                      }}
+                                    />
+                                  </label>
+                                </div>
+
+                                {/* Option C: High-fidelity mock templates */}
+                                <div className="pt-2">
+                                  <p className="text-[8.5px] font-bold text-slate-400 uppercase mb-1">Sandbox Fallback: Quick Mock Selfies</p>
+                                  <div className="grid grid-cols-2 gap-2">
+                                    <button
+                                      onClick={() => {
+                                        const mockPic = "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=300&q=80";
+                                        setAttendanceProof(mockPic);
+                                        addTerminalLine("Selected Gym Event Selfie mock asset.");
+                                      }}
+                                      className="bg-white border border-slate-300 p-1.5 text-[8.5px] font-bold hover:bg-slate-100 flex flex-col items-center gap-1 cursor-pointer"
+                                    >
+                                      <span className="block truncate font-black text-slate-700">Selfie at Quadrangle</span>
+                                    </button>
+                                    <button
+                                      onClick={() => {
+                                        const mockPic = "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=300&q=80";
+                                        setAttendanceProof(mockPic);
+                                        addTerminalLine("Selected Council Booth Selfie mock asset.");
+                                      }}
+                                      className="bg-white border border-slate-300 p-1.5 text-[8.5px] font-bold hover:bg-slate-100 flex flex-col items-center gap-1 cursor-pointer"
+                                    >
+                                      <span className="block truncate font-black text-slate-700">Selfie at SSC Pavilion</span>
+                                    </button>
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* RIGHT PREVIEW / DETAILS BLOCK */}
+                        <div className="md:col-span-5 bg-indigo-50/50 border-2 border-indigo-900/20 p-5 space-y-4">
+                          <h4 className="text-xs font-black uppercase text-indigo-900 leading-none">Walk-In Candidate Verification</h4>
+                          
+                          <div className="space-y-2 text-xs">
+                            <div className="flex justify-between border-b border-indigo-100 pb-1.5">
+                              <span className="text-slate-400 font-medium">ID Number:</span>
+                              <span className="font-mono font-bold text-slate-800">{attendanceStudentId || 'Not Entered'}</span>
+                            </div>
+                            <div className="flex justify-between border-b border-indigo-100 pb-1.5">
+                              <span className="text-slate-400 font-medium">Full Name:</span>
+                              <span className="font-bold text-slate-800">{attendanceStudentName || 'Not Entered'}</span>
+                            </div>
+                            <div className="flex justify-between border-b border-indigo-100 pb-1.5">
+                              <span className="text-slate-400 font-medium">Course Major:</span>
+                              <span className="font-bold text-slate-800">{attendanceCollege || 'Not Entered'}</span>
+                            </div>
+                            <div className="flex justify-between border-b border-indigo-100 pb-1.5">
+                              <span className="text-slate-400 font-medium">Year Level:</span>
+                              <span className="font-bold text-indigo-950">
+                                {attendanceYear === 1 ? '1st' : attendanceYear === 2 ? '2nd' : attendanceYear === 3 ? '3rd' : '4th'} Year
+                              </span>
+                            </div>
+                            <div className="flex justify-between pb-1">
+                              <span className="text-slate-400 font-medium">Earnable Reward:</span>
+                              <span className="font-mono font-black text-emerald-600 uppercase tracking-wider">+50 CIVIC PTS</span>
+                            </div>
+                          </div>
+
+                          <div className="pt-2">
+                            <button
+                              onClick={submitAttendanceCheckIn}
+                              disabled={isSubmittingAttendance}
+                              className={`w-full py-3 px-6 rounded-none text-xs font-black uppercase tracking-wider border-2 border-slate-900 shadow-[4px_4px_0px_0px_rgba(15,23,42,1)] cursor-pointer flex items-center justify-center gap-2 ${isSubmittingAttendance ? 'bg-slate-300 text-slate-500 cursor-not-allowed' : 'bg-[#F2C811] text-slate-900 hover:bg-yellow-400'}`}
+                            >
+                              {isSubmittingAttendance ? 'Registering...' : t('log_checkin')}
+                            </button>
+                            <p className="text-[8px] text-slate-400 font-bold uppercase mt-2 text-center">Subject to administrative OSAS evaluation audit & review</p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* STEP STUDENT REWARDS STORE */}
+                {kioskStep === 'rewards' && (
+                  <div className="p-8 space-y-6 flex-1 flex flex-col justify-between">
+                    <div>
+                      <div className="flex justify-between items-center border-b-4 border-slate-900 pb-3 mb-4">
+                        <h3 className="text-xl font-black uppercase text-slate-900 flex items-center gap-2">
+                          <Gift className="w-5 h-5 text-amber-500" />
+                          WVSU-LC Student Rewards Store
+                        </h3>
+                        <button
+                          onClick={() => { setKioskStep('greeting'); setRewardsError(''); setRewardsSuccess(''); }}
+                          className="bg-white border-2 border-slate-900 text-xs font-black uppercase tracking-wider py-1.5 px-4 cursor-pointer hover:bg-slate-50"
+                        >
+                          Back to Menu
+                        </button>
+                      </div>
+
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between bg-[#F2C811]/10 border-2 border-[#F2C811] p-4 mb-6">
+                        <div>
+                          <p className="text-[10px] font-black uppercase text-slate-500 block leading-none">YOUR ACCUMULATED POINTS BALANCE</p>
+                          <h4 className="text-3xl font-black font-mono text-[#0B2B64] mt-1">{loggedInStudent.points ?? 0} PTS AVAILABLE</h4>
+                        </div>
+                        <p className="text-xs font-medium text-slate-600 mt-2 sm:mt-0 max-w-sm">
+                          Earn more points by checking into department assemblies, participating in evaluations, and contributing to student activities!
+                        </p>
+                      </div>
+
+                      {/* Error Messages */}
+                      {rewardsError && (
+                        <div className="p-3 mb-4 border-2 border-red-500 bg-red-50 text-red-800 font-bold text-xs flex items-center gap-2">
+                          <AlertCircle className="w-5 h-5 shrink-0" />
+                          <p>{rewardsError}</p>
+                        </div>
+                      )}
+
+                      {/* Success Messages */}
+                      {rewardsSuccess && (
+                        <div className="p-4 mb-4 border-2 border-emerald-500 bg-emerald-50 text-emerald-800 font-bold text-xs">
+                          <div className="flex items-start gap-2">
+                            <CheckCircle className="w-5 h-5 shrink-0 text-emerald-600" />
+                            <div>
+                              <p className="font-black uppercase text-emerald-900">REWARD VOUCHER DECANTED SUCCESSFULLY!</p>
+                              <p className="mt-1 font-bold text-[11px] leading-relaxed">{rewardsSuccess}</p>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* rewards cards list */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {CAMPUS_REWARDS.map(reward => {
+                          const canAfford = (loggedInStudent.points ?? 0) >= reward.pointsCost;
+                          return (
+                            <div key={reward.id} className="bg-white border-2 border-slate-900 p-4 shadow-[4px_4px_0px_0px_rgba(15,23,42,1)] flex flex-col justify-between">
+                              <div>
+                                <div className="flex justify-between items-start mb-2">
+                                  <span className="text-[8.5px] font-black uppercase px-2 py-0.5 bg-slate-100 text-slate-600 border border-slate-300">{reward.category}</span>
+                                  <span className="font-mono text-xs font-black text-amber-600">{reward.pointsCost} PTS</span>
+                                </div>
+                                <h4 className="text-sm font-black text-[#0B2B64] uppercase mb-1">{reward.title}</h4>
+                                <p className="text-[10px] text-slate-500 font-bold leading-normal mb-4">{reward.description}</p>
+                              </div>
+
+                              <button
+                                onClick={() => handleRedeemReward(reward)}
+                                disabled={isRedeeming}
+                                className={`w-full py-2 px-3 text-center text-[10px] font-black uppercase tracking-wider border-2 border-slate-900 cursor-pointer ${canAfford ? 'bg-[#0B2B64] text-white hover:bg-slate-900' : 'bg-slate-100 text-slate-400 border-slate-300 cursor-not-allowed'}`}
+                              >
+                                {canAfford ? 'Redeem Perk Item' : `Needs ${reward.pointsCost - (loggedInStudent.points ?? 0)} More Pts`}
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* STEP VIEW ANNOUNCEMENTS / UPCOMING */}
+                {kioskStep === 'upcoming' && (
+                  <div className="p-8 space-y-6 flex-1 flex flex-col justify-between">
+                    <div>
+                      <div className="flex justify-between items-center border-b-4 border-slate-900 pb-3 mb-4">
+                        <h3 className="text-xl font-black uppercase text-slate-900 flex items-center gap-1.5">
+                          <Calendar className="w-5 h-5 text-indigo-900" />
+                          Upcoming Campus Announcements
+                        </h3>
+                        <button
+                          onClick={() => setKioskStep('greeting')}
+                          className="bg-white border-2 border-slate-900 text-xs font-black uppercase tracking-wider py-1.5 px-4 cursor-pointer hover:bg-slate-50"
+                        >
+                          Back to Menu
+                        </button>
+                      </div>
+
+                      <div className="space-y-4">
+                        {upcomingEvents.map((evt, i) => (
+                          <div
+                            key={evt.id}
+                            className={`p-4 border-2 border-slate-900 shadow-[4px_4px_0px_0px_rgba(15,23,42,1)] transition-colors cursor-pointer ${selectedUpcomingId === evt.id ? 'bg-indigo-50 border-indigo-900' : 'bg-white hover:bg-slate-50'}`}
+                            onClick={() => setSelectedUpcomingId(selectedUpcomingId === evt.id ? null : evt.id)}
+                          >
+                            <div className="flex justify-between items-start">
+                              <div>
+                                <span className="font-mono text-[9px] bg-indigo-900 text-white font-bold py-0.5 px-1.5 uppercase tracking-wider mr-2">
+                                  {i + 1}
+                                </span>
+                                <span className="text-base font-black text-[#0B2B64] uppercase">{evt.title}</span>
+                              </div>
+                              <span className="text-[10px] font-mono font-bold text-slate-500 uppercase">{evt.date}</span>
+                            </div>
+
+                            {selectedUpcomingId === evt.id && (
+                              <div className="mt-4 pt-3 border-t border-dashed border-slate-300 text-xs text-slate-700 space-y-2 animate-fadeIn">
+                                <p className="font-bold leading-relaxed">{evt.description}</p>
+                                <div className="grid grid-cols-2 gap-4 text-[10px] font-mono font-bold uppercase text-slate-500">
+                                  <div>Venue: <span className="text-slate-900 font-bold">{evt.venue}</span></div>
+                                  <div>Time: <span className="text-slate-900 font-bold">{evt.time}</span></div>
+                                  <div>Host: <span className="text-slate-900 font-bold">{evt.organizer}</span></div>
+                                  <div>Open To: <span className="text-slate-900 font-yellow-600 font-black">{evt.open_to}</span></div>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* STEP EVALUATIONS SELECT */}
+                {kioskStep === 'past_select' && (
+                  <div className="p-8 space-y-6 flex-1 flex flex-col justify-between">
+                    {isProfileIncomplete ? (
+                      <div className="p-8 border-4 border-dashed border-red-500 bg-red-50/55 flex flex-col items-center justify-center text-center space-y-4 my-auto">
+                        <AlertTriangle className="w-16 h-16 text-red-600 animate-pulse stroke-[2.5px]" />
+                        <h3 className="text-2xl font-black text-red-950 uppercase">Evaluation Access Blocked</h3>
+                        <p className="text-xs text-slate-700 font-bold max-w-md leading-relaxed">
+                          You must complete and submit your active student credentials (student ID, name, course department, and year level) before you can access and submit event evaluations.
+                        </p>
+                        <div className="pt-2">
+                          <button
+                            onClick={openProfileUpdateModal}
+                            className="bg-red-650 hover:bg-slate-900 text-white font-black uppercase text-xs py-3 px-6 border-2 border-slate-900 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] cursor-pointer flex items-center gap-2"
+                          >
+                            🔐 Open Authorized Profile Update Flow
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div>
+                        <div className="flex justify-between items-center border-b-4 border-slate-900 pb-3 mb-4">
+                          <h3 className="text-xl font-black uppercase text-slate-900 flex items-center gap-1.5">
+                            <ClipboardCheck className="w-5 h-5 text-amber-600" />
+                            Select past Event for Evaluation Dashboard
+                          </h3>
+                          <button
+                            onClick={() => setKioskStep('greeting')}
+                            className="bg-white border-2 border-slate-900 text-xs font-black uppercase tracking-wider py-1.5 px-4 cursor-pointer hover:bg-slate-50"
+                          >
+                            Back to Menu
+                          </button>
+                        </div>
+
+                        <p className="text-xs text-slate-500 font-bold mb-4">
+                          Select a past event below. Showing events that participated under your college scope: <span className="text-amber-600 font-black">{loggedInStudent.college}</span>
+                        </p>
+
+                        <div className="space-y-3">
+                          {pastEvents
+                            .filter(e => e.colleges_participated.includes(loggedInStudent.college))
+                            .map((evt, i) => (
+                              <div
+                                key={evt.id}
+                                onClick={() => {
+                                  setSelectedPastEvent(evt);
+                                  setKioskStep('form');
+                                  setCurrentQuestionIndex(0);
+                                  playBeep(1100, 0.1);
+                                }}
+                                className="bg-white hover:bg-amber-50 border-2 border-slate-900 p-4 shadow-[4px_4px_0px_0px_rgba(15,23,42,1)] flex items-center justify-between cursor-pointer transition-colors"
+                              >
+                                <div>
+                                  <div className="text-[10px] font-mono font-bold text-slate-400">INDEX [{i + 1}] • REGISTRY ID: {evt.id}</div>
+                                  <h4 className="text-lg font-black text-slate-900 uppercase">{evt.title}</h4>
+                                  <p className="text-[10px] font-semibold text-slate-500 uppercase mt-1">{evt.venue} • Host Unit: {evt.organizer}</p>
+                                </div>
+                                <ChevronRight className="w-5 h-5 text-slate-700 shrink-0" />
+                              </div>
+                            ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* STEP EVALUATION FEEDBACK QUESTION WIZARD */}
+                {kioskStep === 'form' && selectedPastEvent && (
+                  <div className="p-8 space-y-6 flex-1 flex flex-col justify-between">
+                    <div>
+                      <div className="flex justify-between items-center border-b-2 border-slate-900 pb-2 mb-4">
+                        <div>
+                          <span className="text-[10px] font-black uppercase text-amber-600">Active evaluation</span>
+                          <h3 className="text-base font-black uppercase text-slate-900 leading-tight">{selectedPastEvent.title}</h3>
+                        </div>
+                        <span className="font-mono text-xs font-black bg-[#F2C811] text-[#0B2B64] px-2 py-1 border border-slate-900 shrink-0">
+                          Question {currentQuestionIndex + 1} of 9
+                        </span>
+                      </div>
+
+                      {answersFeedback && (
+                        <div className="p-2 py-1 bg-green-100 border border-green-500 text-green-700 font-black text-xs text-center uppercase tracking-widest animate-pulse">
+                          {answersFeedback}
+                        </div>
+                      )}
+
+                      <div className="my-6 space-y-4">
+                        <h4 className="text-xl font-black text-[#0B2B64] leading-tight select-none">
+                          {getQuestionPrompt(currentQuestionIndex)}
+                        </h4>
+
+                        {/* Interactive Options Selectable block */}
+                        {currentQuestionIndex >= 0 && currentQuestionIndex <= 4 && (
+                          <div className="grid grid-cols-5 gap-3 max-w-sm">
+                            {[1, 2, 3, 4, 5].map((grade) => (
+                              <button
+                                key={grade}
+                                onClick={() => saveAnswerAndProceed(currentQuestionIndex, grade)}
+                                className={`h-12 border-2 border-slate-900 font-mono font-black text-lg transition-transform cursor-pointer ${wizardAnswers[`q${currentQuestionIndex + 1}`] === grade ? 'bg-[#F2C811] text-slate-950 scale-102' : 'bg-slate-50 hover:bg-slate-100'}`}
+                              >
+                                {grade}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+
+                        {currentQuestionIndex === 3 && (
+                          <button
+                            onClick={() => saveAnswerAndProceed(3, 'N/A')}
+                            className="mt-2 bg-white hover:bg-slate-50 text-slate-700 py-2 px-6 font-black uppercase text-xs border-2 border-slate-900"
+                          >
+                            None / N/A
+                          </button>
+                        )}
+
+                        {currentQuestionIndex === 5 && (
+                          <div className="grid grid-cols-3 gap-3 max-w-sm">
+                            {['YES', 'MAYBE', 'NO'].map((opt) => (
+                              <button
+                                key={opt}
+                                onClick={() => saveAnswerAndProceed(5, opt)}
+                                className="py-2.5 border-2 border-slate-900 font-mono font-black text-xs hover:bg-slate-100 cursor-pointer"
+                              >
+                                {opt}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+
+                        {(currentQuestionIndex === 6 || currentQuestionIndex === 7 || currentQuestionIndex === 8) && (
+                          <div className="space-y-2 max-w-lg">
+                            <textarea
+                              rows={3}
+                              placeholder="Type comment details (max 200 characters)..."
+                              value={wizardAnswers[`q${currentQuestionIndex + 1}`]}
+                              onChange={(e) => setWizardAnswers(prev => ({ ...prev, [`q${currentQuestionIndex + 1}`]: e.target.value.slice(0, 200) }))}
+                              className="w-full bg-slate-50 border-2 border-slate-900 font-mono font-bold text-xs p-3 focus:outline-none focus:bg-white resize-none"
+                            />
+                            <div className="flex justify-between items-center text-[10px] font-mono text-slate-400">
+                              <span>Character count: {wizardAnswers[`q${currentQuestionIndex + 1}`].length} / 200</span>
+                              {currentQuestionIndex === 8 && (
+                                <button
+                                  onClick={() => saveAnswerAndProceed(8, 'SKIP')}
+                                  className="text-indigo-900 underline font-black uppercase text-[9px]"
+                                >
+                                  Skip other comments
+                                </button>
+                              )}
+                            </div>
+                            <button
+                              onClick={() => saveAnswerAndProceed(currentQuestionIndex, wizardAnswers[`q${currentQuestionIndex + 1}`] || 'N/A')}
+                              className="bg-[#0B2B64] hover:bg-slate-900 text-white font-black uppercase tracking-wider py-2 px-6 border-2 border-slate-900 text-xs"
+                            >
+                              Save and Next
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* STEP WIZARD CONFIRMATION PANEL */}
+                {kioskStep === 'confirm' && selectedPastEvent && (
+                  <div className="p-8 space-y-6 flex-1 flex flex-col justify-between">
+                    <div>
+                      <h3 className="text-xl font-black uppercase text-slate-900 border-b-4 border-slate-900 pb-2 mb-4">
+                        Confirm evaluation data transmission
+                      </h3>
+                      <div className="bg-slate-50 border-2 border-slate-900 p-4 space-y-2 text-xs font-mono">
+                        <p className="border-b font-sans font-bold pb-2 text-slate-600 block mb-2">Please double check your recorded review values:</p>
+                        <div className="grid grid-cols-2 gap-2 text-slate-800">
+                          <div>Q1 Evaluation Score: <span className="font-extrabold text-[#0B2B64]">{wizardAnswers.q1} / 5</span></div>
+                          <div>Q2 Program Relevance: <span className="font-extrabold text-[#0B2B64]">{wizardAnswers.q2} / 5</span></div>
+                          <div>Q3 Logistics Adequacy: <span className="font-extrabold text-[#0B2B64]">{wizardAnswers.q3} / 5</span></div>
+                          <div>Q4 Speaker performance: <span className="font-extrabold text-[#0B2B64]">{wizardAnswers.q4} / 5</span></div>
+                          <div>Q5 Venue Comfortability: <span className="font-extrabold text-[#0B2B64]">{wizardAnswers.q5} / 5</span></div>
+                          <div>Q6 Future Attendance: <span className="font-extrabold text-[#0B2B64] uppercase">{wizardAnswers.q6}</span></div>
+                        </div>
+                        <div className="pt-2 border-t font-sans font-bold text-slate-700">
+                          <div>Highlight: <span className="italic text-slate-550 italic">"{wizardAnswers.q7 || 'None stated'}"</span></div>
+                          <div>Friction: <span className="italic text-slate-550 italic">"{wizardAnswers.q8 || 'None stated'}"</span></div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex gap-4">
+                      <button
+                        onClick={submitWizardData}
+                        disabled={reportLoading}
+                        className="flex-1 bg-green-600 hover:bg-slate-950 text-[#F2C811] hover:text-yellow-400 py-3 font-black uppercase border-4 border-slate-900 shadow-[4px_4px_0px_0px_rgba(15,23,42,1)] cursor-pointer"
+                      >
+                        {reportLoading ? "Broadcasting..." : "YES - Submit reviews"}
+                      </button>
+                      <button
+                        onClick={() => { setKioskStep('greeting'); playBeep(500, 0.1); }}
+                        className="p-3 px-8 bg-white hover:bg-slate-50 text-slate-700 py-3 font-black uppercase border-4 border-slate-900 shadow-[4px_4px_0px_0px_rgba(15,23,42,1)]"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* STEP WIZARD COMPLETED OK BLOCK */}
+                {kioskStep === 'completed' && (
+                  <div className="p-8 space-y-6 flex-1 flex flex-col justify-center text-center max-w-md mx-auto">
+                    <CheckCircle className="w-16 h-16 text-green-500 mx-auto animate-bounce" />
+                    <div>
+                      <h3 className="text-3xl font-black uppercase text-slate-900 mt-2 leading-none">Review File Saved!</h3>
+                      <p className="text-[10px] font-black uppercase text-green-600 tracking-wider mt-1.5">Evaluation recorded on live Express Datastore</p>
+                    </div>
+
+                    <p className="text-xs text-slate-500 font-bold leading-relaxed">
+                      Thank you for using the Kiosk! Your responses have successfully synced with student directories and will assist administrative bodies in scaling next year's events.
+                    </p>
+
+                    <div className="grid grid-cols-2 gap-4 pt-4 border-t border-dashed">
+                      <div className="bg-slate-55 p-3 bg-slate-50 border-2 border-slate-900">
+                        <div className="text-[8px] font-black text-slate-400 uppercase">Your College responses</div>
+                        <div className="text-2xl font-mono font-black text-slate-900">{completedCollegeCount}</div>
+                      </div>
+                      <div className="bg-slate-55 p-3 bg-slate-50 border-2 border-slate-900">
+                        <div className="text-[8px] font-black text-slate-400 uppercase">Campus evaluators total</div>
+                        <div className="text-2xl font-mono font-black text-slate-900">{completedCampusCount}</div>
+                      </div>
+                    </div>
+
+                    <button
+                      onClick={() => {
+                        setKioskStep('greeting');
+                        setWizardAnswers({ q1: 5, q2: 5, q3: 5, q4: 5, q5: 5, q6: 'YES', q7: '', q8: '', q9: '' });
+                        playBeep(900, 0.08);
+                      }}
+                      className="bg-[#0B2B64] hover:bg-slate-900 text-[#F2C811] py-2.5 font-black uppercase text-xs border-2 border-slate-900 shadow-[3px_3px_0px_0px_rgba(15,23,42,1)]"
+                    >
+                      Clear & Return to Main Page
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* TERMINAL EMULATED CLI DUMB PANEL (Matches mock visual integrity) */}
+              <div className="bg-slate-950 p-6 border-4 border-slate-900 text-emerald-400 font-mono text-xs shadow-[8px_8px_0px_0px_rgba(15,23,42,1)] flex flex-col justify-between h-56">
+                <div className="overflow-y-auto space-y-1 pr-1 flex-1 max-h-40">
+                  {terminalHistory.map((line, idx) => (
+                    <div key={idx} className="leading-normal break-all">
+                      {line}
+                    </div>
+                  ))}
+                  <div ref={terminalBottomRef} />
+                </div>
+                <form onSubmit={handleTerminalFormSubmit} className="flex items-center gap-2 border-t border-emerald-900/60 pt-3 mt-2 shrink-0">
+                  <span className="text-[#F2C811] font-black">▶</span>
+                  <input
+                    type="text"
+                    value={terminalInput}
+                    onChange={(e) => setTerminalInput(e.target.value)}
+                    placeholder="Type command code or keypad digits..."
+                    className="flex-1 bg-transparent border-none outline-none font-mono text-xs py-0 text-emerald-400 placeholder:text-emerald-900"
+                  />
+                  <input type="submit" className="hidden" />
+                </form>
+              </div>
+            </section>
+          </div>
+        )}
+
+        {/* VIEW 2: ADMINISTRATORS CONTROL CENTER */}
+        {activeTab === 'admin' && (
+          <div>
+            {!isAdminLoggedIn ? (
+              <div className="max-w-md mx-auto bg-white border-4 border-slate-900 p-8 shadow-[8px_8px_0px_0px_rgba(15,23,42,1)] mt-12 animate-fadeIn">
+                <form onSubmit={handleAdminAuth} className="space-y-6">
+                  <div className="space-y-2 text-center pb-4 border-b-4 border-dashed border-slate-200">
+                    <Cpu className="w-12 h-12 text-[#0B2B64] mx-auto stroke-[2.5px]" />
+                    <h2 className="text-2xl font-black italic tracking-tighter uppercase text-slate-900 leading-none">
+                      DEPARTMENT LOGIN
+                    </h2>
+                    <p className="text-[10px] font-black uppercase text-slate-400 tracking-wider">
+                      Department or admin credentials verification required
+                    </p>
+                  </div>
+
+                  {adminAuthError && (
+                    <div className="bg-red-50 text-red-700 p-3 pr-2 text-[10px] font-black border-2 border-red-500 uppercase tracking-wider text-center flex items-center justify-center gap-1.5 animate-bounce">
+                      <AlertTriangle className="w-4 h-4 shrink-0" />
+                      <span>{adminAuthError}</span>
+                    </div>
+                  )}
+
+                  <div className="space-y-3">
+                    <div>
+                      <label className="text-[9px] font-black uppercase text-slate-500 block mb-1">Department / Admin Username</label>
+                      <input 
+                        type="text"
+                        required
+                        value={adminUsername}
+                        onChange={(e) => setAdminUsername(e.target.value)}
+                        placeholder="Type ID (e.g. dept-infotech, osa, ssc)"
+                        className="w-full bg-slate-50 border-2 border-slate-900 font-mono font-bold text-xs p-3 focus:outline-none focus:bg-white"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[9px] font-black uppercase text-slate-500 block mb-1">Access Passcode Pin</label>
+                      <input 
+                        type="password"
+                        required
+                        value={adminPassword}
+                        onChange={(e) => setAdminPassword(e.target.value)}
+                        placeholder="Type password (e.g. infotech123, osa123)"
+                        className="w-full bg-slate-50 border-2 border-slate-900 font-mono font-bold text-xs p-3 focus:outline-none focus:bg-white"
+                      />
+                    </div>
+                  </div>
+
+                  <button 
+                    type="submit"
+                    className="w-full bg-[#0B2B64] text-[#F2C811] hover:bg-slate-900 border-4 border-slate-900 py-3 rounded-none font-black uppercase tracking-wider text-xs shadow-[4px_4px_0px_0px_rgba(15,23,42,1)] cursor-pointer"
+                  >
+                    Authorize Department Dashboard
+                  </button>
+
+
+                </form>
+              </div>
+            ) : (
+              <AdminConsole
+                students={students}
+                upcomingEvents={upcomingEvents}
+                pastEvents={pastEvents}
+                evaluations={evaluations}
+                attendanceRecords={attendanceRecords}
+                onSync={syncDatabase}
+                currentAdminUser={currentAdminUser}
+                onLogout={() => {
+                  setIsAdminLoggedIn(false);
+                  setCurrentAdminUser(null);
+                  addTerminalLine("OSAS administrative session dissolved.");
+                }}
+                playBeep={playBeep}
+                addTerminalLine={addTerminalLine}
+              />
+            )}
+          </div>
+        )}
+      </main>
+      
+      {/* SECURE PROFILE CREDENTIALS MODAL */}
+      {isProfileUpdateModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white border-4 border-slate-900 max-w-md w-full p-6 shadow-[8px_8px_0px_0px_rgba(15,23,42,1)] animate-scale-up space-y-4">
+            <div className="flex justify-between items-center border-b-2 border-slate-200 pb-2">
+              <h3 className="text-md font-black uppercase text-[#0B2B64] flex items-center gap-1.5">
+                🔒 Secure Student Credentials Registry
+              </h3>
+              <button
+                onClick={() => { setIsProfileUpdateModalOpen(false); playBeep(800, 0.05); }}
+                className="text-slate-400 hover:text-slate-900 font-bold"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={saveProfileUpdate} className="space-y-4">
+              <div>
+                <label className="text-[10px] font-black uppercase text-slate-500 block mb-1">Student Registration ID</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. 24-1058"
+                  value={editStudentId}
+                  onChange={(e) => setEditStudentId(e.target.value)}
+                  className="w-full bg-slate-50 border-2 border-slate-900 font-mono font-bold text-xs p-2.5 focus:outline-none focus:bg-white"
+                />
+              </div>
+
+              <div>
+                <label className="text-[10px] font-black uppercase text-slate-500 block mb-1">Student Full Name</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Maria Santos"
+                  value={editStudentName}
+                  onChange={(e) => setEditStudentName(e.target.value)}
+                  className="w-full bg-slate-50 border-2 border-slate-900 font-mono font-bold text-xs p-2.5 focus:outline-none focus:bg-white"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[10px] font-black uppercase text-slate-500 block mb-1">Course Department</label>
+                  <select
+                    value={editStudentCollege}
+                    onChange={(e) => setEditStudentCollege(e.target.value)}
+                    className="w-full bg-slate-50 border-2 border-slate-900 font-mono font-bold text-xs p-2.5 focus:outline-none focus:bg-white"
+                  >
+                    {COLLEGES.map(c => (
+                      <option key={c.code} value={c.code}>{c.code} - {c.name}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-[10px] font-black uppercase text-slate-500 block mb-1">Year Level</label>
+                  <select
+                    value={editStudentYear}
+                    onChange={(e) => setEditStudentYear(Number(e.target.value))}
+                    className="w-full bg-slate-50 border-2 border-slate-900 font-mono font-bold text-xs p-2.5 focus:outline-none focus:bg-white"
+                  >
+                    <option value={1}>1st Year</option>
+                    <option value={2}>2nd Year</option>
+                    <option value={3}>3rd Year</option>
+                    <option value={4}>4th Year</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="text-[10px] font-black uppercase text-slate-500 block mb-1">Degree Program / Major (Optional)</label>
+                <input
+                  type="text"
+                  placeholder="e.g. BS in Information Technology"
+                  value={editStudentProgram}
+                  onChange={(e) => setEditStudentProgram(e.target.value)}
+                  className="w-full bg-slate-50 border-2 border-slate-900 font-mono font-bold text-xs p-2.5 focus:outline-none focus:bg-white"
+                />
+              </div>
+
+              <div className="pt-2 flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => { setIsProfileUpdateModalOpen(false); playBeep(800, 0.05); }}
+                  className="flex-1 py-2.5 px-4 bg-slate-100 border-2 border-slate-900 text-slate-700 font-black uppercase tracking-wider text-xs cursor-pointer text-center"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 py-2.5 px-4 bg-[#F2C811] hover:bg-yellow-400 text-slate-900 font-black uppercase tracking-wider text-xs border-2 border-slate-900 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] cursor-pointer text-center"
+                >
+                  Save Credentials
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* FOOTER METRICS AREA */}
+      <footer className="max-w-7xl w-full mx-auto mt-12 pt-6 border-t font-mono text-[9px] text-slate-400 uppercase tracking-widest text-center flex flex-col sm:flex-row items-center justify-between gap-2">
+        <span>© 2025 WEST VISAYAS STATE UNIVERSITY - LAMBUNAO CAMPUS. ALL RIGHTS RESERVED.</span>
+        <span>ENGINE CLOCK: {currentTime.toLocaleString()} PST • SECURE STATUS: SYNCHRONIZED</span>
+      </footer>
+    </div>
+  );
+}
