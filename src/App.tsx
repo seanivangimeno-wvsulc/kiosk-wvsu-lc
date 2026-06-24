@@ -254,6 +254,35 @@ export default function App() {
     }
   };
 
+  const handleApiFallback = (reason: string) => {
+    if (!isOfflineMode) {
+      console.warn("API Server is unreachable or returned invalid non-JSON content. Reason:", reason);
+      setIsOfflineMode(true);
+      saveLocalStorage('kiosk_offline_mode', true);
+      addTerminalLine(`[SYSTEM] CENTRAL API UNREACHABLE (e.g. VERCEL HOSTING LIMITATION).`);
+      addTerminalLine(`[SYSTEM] AUTOMATICALLY ENABLING OFFLINE MODE (LOCAL STORAGE) FOR SEAMLESS KIOSK OPERATIONS.`);
+      
+      const localSt = loadLocalStorage('kiosk_students', INITIAL_STUDENTS);
+      const localUp = loadLocalStorage('kiosk_upcoming_events', INITIAL_UPCOMING_EVENTS);
+      const localPast = loadLocalStorage('kiosk_past_events', INITIAL_PAST_EVENTS);
+      const localEvals = loadLocalStorage('kiosk_evaluations', INITIAL_EVALUATIONS);
+      const localAtt = loadLocalStorage('kiosk_attendance_records', INITIAL_ATTENDANCE);
+
+      setStudents(localSt);
+      setUpcomingEvents(localUp);
+      setPastEvents(localPast);
+      setEvaluations(localEvals);
+      setAttendanceRecords(localAtt);
+
+      if (loggedInStudent.id) {
+        const found = localSt.find(s => s.id.trim().toLowerCase() === loggedInStudent.id.trim().toLowerCase());
+        if (found) {
+          setLoggedInStudent(found);
+        }
+      }
+    }
+  };
+
   // SYNC UTILITY WITH SERVER DATASTORE
   const syncDatabase = () => {
     if (isOfflineMode) {
@@ -278,8 +307,16 @@ export default function App() {
       return;
     }
 
+    const checkJsonResponse = (res: Response) => {
+      const contentType = res.headers.get("content-type");
+      if (!res.ok || (contentType && contentType.includes("text/html"))) {
+        throw new Error("HTML_FALLBACK_DETECTED");
+      }
+      return res.json();
+    };
+
     fetch('/api/students')
-      .then(res => res.json())
+      .then(checkJsonResponse)
       .then(data => { 
         if (data.success) {
           setStudents(data.students); 
@@ -289,10 +326,13 @@ export default function App() {
       .catch(e => {
         console.error("Error syncing students:", e);
         setStudents(loadLocalStorage('kiosk_students', INITIAL_STUDENTS));
+        if (e.message === "HTML_FALLBACK_DETECTED" || e.message.includes("Unexpected token") || e.message.includes("JSON")) {
+          handleApiFallback("HTML response received instead of JSON.");
+        }
       });
 
     fetch('/api/upcoming-events')
-      .then(res => res.json())
+      .then(checkJsonResponse)
       .then(data => { 
         if (data.success) {
           setUpcomingEvents(data.upcomingEvents); 
@@ -302,10 +342,13 @@ export default function App() {
       .catch(e => {
         console.error("Error syncing upcoming events:", e);
         setUpcomingEvents(loadLocalStorage('kiosk_upcoming_events', INITIAL_UPCOMING_EVENTS));
+        if (e.message === "HTML_FALLBACK_DETECTED" || e.message.includes("Unexpected token") || e.message.includes("JSON")) {
+          handleApiFallback("HTML response received instead of JSON.");
+        }
       });
 
     fetch('/api/past-events')
-      .then(res => res.json())
+      .then(checkJsonResponse)
       .then(data => { 
         if (data.success) {
           setPastEvents(data.pastEvents); 
@@ -315,10 +358,13 @@ export default function App() {
       .catch(e => {
         console.error("Error syncing past events:", e);
         setPastEvents(loadLocalStorage('kiosk_past_events', INITIAL_PAST_EVENTS));
+        if (e.message === "HTML_FALLBACK_DETECTED" || e.message.includes("Unexpected token") || e.message.includes("JSON")) {
+          handleApiFallback("HTML response received instead of JSON.");
+        }
       });
 
     fetch('/api/past-evaluations')
-      .then(res => res.json())
+      .then(checkJsonResponse)
       .then(data => { 
         if (data.success) {
           setEvaluations(data.evaluations); 
@@ -328,10 +374,13 @@ export default function App() {
       .catch(e => {
         console.error("Error syncing evaluations:", e);
         setEvaluations(loadLocalStorage('kiosk_evaluations', INITIAL_EVALUATIONS));
+        if (e.message === "HTML_FALLBACK_DETECTED" || e.message.includes("Unexpected token") || e.message.includes("JSON")) {
+          handleApiFallback("HTML response received instead of JSON.");
+        }
       });
 
     fetch('/api/attendance')
-      .then(res => res.json())
+      .then(checkJsonResponse)
       .then(data => { 
         if (data.success) {
           setAttendanceRecords(data.attendance); 
@@ -341,6 +390,9 @@ export default function App() {
       .catch(e => {
         console.error("Error syncing attendance records:", e);
         setAttendanceRecords(loadLocalStorage('kiosk_attendance_records', INITIAL_ATTENDANCE));
+        if (e.message === "HTML_FALLBACK_DETECTED" || e.message.includes("Unexpected token") || e.message.includes("JSON")) {
+          handleApiFallback("HTML response received instead of JSON.");
+        }
       });
   };
 
@@ -611,7 +663,13 @@ export default function App() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
     })
-      .then(res => res.json())
+      .then(res => {
+        const contentType = res.headers.get("content-type");
+        if (!res.ok || (contentType && contentType.includes("text/html"))) {
+          throw new Error("HTML_FALLBACK_DETECTED");
+        }
+        return res.json();
+      })
       .then(data => {
         setReportLoading(false);
         if (data.success) {
@@ -626,8 +684,51 @@ export default function App() {
         }
       })
       .catch(err => {
+        console.warn("Evaluation submission failed, falling back to local storage...", err);
+        setIsOfflineMode(true);
+        saveLocalStorage('kiosk_offline_mode', true);
+
+        const localEvals = loadLocalStorage('kiosk_evaluations', INITIAL_EVALUATIONS);
+        const newEval = {
+          id: `SUB-P01-${Math.floor(1000 + Math.random() * 9000)}`,
+          student_id: payload.student_id,
+          college: payload.college,
+          event_id: payload.event_id,
+          q1: payload.q1,
+          q2: payload.q2,
+          q3: payload.q3,
+          q4: payload.q4,
+          q5: payload.q5,
+          q6: payload.q6,
+          q7: payload.q7,
+          q8: payload.q8,
+          q9: payload.q9,
+          timestamp: new Date().toISOString()
+        };
+        localEvals.push(newEval);
+        saveLocalStorage('kiosk_evaluations', localEvals);
+
+        // Update student points (+15 points for submitting an evaluation!)
+        const localStudents = loadLocalStorage('kiosk_students', INITIAL_STUDENTS);
+        const stIdx = localStudents.findIndex(s => s.id === payload.student_id);
+        if (stIdx >= 0) {
+          localStudents[stIdx].points = (localStudents[stIdx].points ?? 0) + 15;
+          saveLocalStorage('kiosk_students', localStudents);
+          setLoggedInStudent(localStudents[stIdx]);
+        }
+
+        // Calculate college counts
+        const collegeCount = localEvals.filter(e => e.event_id === payload.event_id && e.college === payload.college).length;
+        const campusTotal = localEvals.filter(e => e.event_id === payload.event_id).length;
+
         setReportLoading(false);
-        addTerminalLine(`TRANSMISSION FAILURE: Server offline. ${err.message}`);
+        setCompletedCollegeCount(collegeCount);
+        setCompletedCampusCount(campusTotal);
+        setKioskStep('completed');
+        playBeep(1400, 0.35);
+        syncDatabase();
+        addTerminalLine(`[SYSTEM] SERVER OFFLINE: Automatically enabled Local Storage DB mode.`);
+        addTerminalLine(`Submission ID ${newEval.id} filed under ${payload.college} channel successfully (Offline Fallback)!`);
       });
   };
 
@@ -736,7 +837,13 @@ export default function App() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
     })
-      .then(res => res.json())
+      .then(res => {
+        const contentType = res.headers.get("content-type");
+        if (!res.ok || (contentType && contentType.includes("text/html"))) {
+          throw new Error("HTML_FALLBACK_DETECTED");
+        }
+        return res.json();
+      })
       .then(data => {
         setIsSubmittingAttendance(false);
         if (data.success) {
@@ -766,10 +873,67 @@ export default function App() {
         }
       })
       .catch(err => {
+        console.warn("Check-in failed with error, falling back to local storage...", err);
         setIsSubmittingAttendance(false);
-        playBeep(400, 0.3);
-        setAttendanceMessage({ text: `Network error: ${err.message}`, success: false });
-        addTerminalLine(`NETWORK ERROR: ${err.message}`);
+        setIsOfflineMode(true);
+        saveLocalStorage('kiosk_offline_mode', true);
+
+        // Run offline logic
+        const localStudents = loadLocalStorage('kiosk_students', INITIAL_STUDENTS);
+        let matchedLocal = localStudents.find(s => s.id.trim().toLowerCase() === attendanceStudentId.trim().toLowerCase());
+        
+        if (!matchedLocal) {
+          // auto enroll if not found
+          matchedLocal = {
+            id: attendanceStudentId.trim(),
+            name: attendanceStudentName.trim(),
+            college: attendanceCollege,
+            program: `${attendanceCollege} Student`,
+            year: Number(attendanceYear) || 1,
+            points: 0,
+            redeemedRewards: []
+          };
+          localStudents.push(matchedLocal);
+        }
+
+        // award 50 points
+        matchedLocal.points = (matchedLocal.points ?? 0) + 50;
+        saveLocalStorage('kiosk_students', localStudents);
+
+        // add attendance record
+        const localAttendance = loadLocalStorage('kiosk_attendance_records', INITIAL_ATTENDANCE);
+        const pastEvts = loadLocalStorage('kiosk_past_events', INITIAL_PAST_EVENTS);
+        const upEvts = loadLocalStorage('kiosk_upcoming_events', INITIAL_UPCOMING_EVENTS);
+        const foundEvent = pastEvts.find(e => e.id === attendanceEventId) || upEvts.find(e => e.id === attendanceEventId);
+        const eventTitle = foundEvent ? foundEvent.title : 'Campus Event';
+
+        const newRecord = {
+          id: `ATT-${Math.floor(1000 + Math.random() * 9000)}`,
+          studentId: matchedLocal.id,
+          studentName: matchedLocal.name,
+          college: matchedLocal.college,
+          year: matchedLocal.year,
+          eventId: attendanceEventId,
+          eventTitle: eventTitle,
+          timestamp: new Date().toISOString(),
+          pointsEarned: 50,
+          proofImage: attendanceProof || "https://images.unsplash.com/photo-1544717305-2782549b5136?w=500",
+          status: "APPROVED" as const
+        };
+        localAttendance.push(newRecord);
+        saveLocalStorage('kiosk_attendance_records', localAttendance);
+
+        playBeep(1400, 0.4);
+        setAttendanceMessage({ 
+          text: `Success (Offline Fallback)! Server API was unreachable/HTML. Attendance logged in Local Storage. Earned +50 points! Current balance: ${matchedLocal.points} PTS.`, 
+          success: true 
+        });
+        addTerminalLine(`[SYSTEM] SERVER OFFLINE: Automatically enabled Local Storage DB mode.`);
+        addTerminalLine(`SUCCESS: Attendance logged for ${matchedLocal.name}. +50 PTS credited locally.`);
+        
+        setAttendanceProof('');
+        setLoggedInStudent(matchedLocal);
+        syncDatabase();
       });
   };
 
@@ -850,7 +1014,13 @@ export default function App() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
     })
-      .then(res => res.json())
+      .then(res => {
+        const contentType = res.headers.get("content-type");
+        if (!res.ok || (contentType && contentType.includes("text/html"))) {
+          throw new Error("HTML_FALLBACK_DETECTED");
+        }
+        return res.json();
+      })
       .then(data => {
         setIsRedeeming(false);
         if (data.success) {
@@ -872,9 +1042,27 @@ export default function App() {
         }
       })
       .catch(err => {
+        console.warn("Reward redemption failed, falling back to local storage...", err);
+        setIsOfflineMode(true);
+        saveLocalStorage('kiosk_offline_mode', true);
+
+        const localStudents = loadLocalStorage('kiosk_students', INITIAL_STUDENTS);
+        const stIdx = localStudents.findIndex(s => s.id === loggedInStudent.id);
+        if (stIdx >= 0) {
+          const student = localStudents[stIdx];
+          student.points = (student.points ?? 0) - reward.pointsCost;
+          if (!student.redeemedRewards) student.redeemedRewards = [];
+          student.redeemedRewards.push(reward.title);
+          saveLocalStorage('kiosk_students', localStudents);
+          setLoggedInStudent(student);
+
+          playBeep(1500, 0.5);
+          setRewardsSuccess(`Successfully redeemed ${reward.title}! Voucher Ticket: WVSU-${reward.id}-${Math.floor(1000 + Math.random() * 9000)} is valid. Present this to OSAS/SSC booth to claim your item (Offline Fallback).`);
+          addTerminalLine(`[SYSTEM] SERVER OFFLINE: Automatically enabled Local Storage DB mode.`);
+          addTerminalLine(`SUCCESS: ${reward.title} claimed. Remaining points: ${student.points} PTS (Offline Fallback).`);
+          syncDatabase();
+        }
         setIsRedeeming(false);
-        setRewardsError(`Network connection fault: ${err.message}`);
-        addTerminalLine(`NETWORK FAULT: ${err.message}`);
       });
   };
 
