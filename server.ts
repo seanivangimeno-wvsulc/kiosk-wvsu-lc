@@ -643,17 +643,24 @@ app.post("/api/submit-evaluation", (req, res) => {
       timestamp: new Date().toISOString()
     };
 
-    // Make sure we save to students DB too if it's a new student ID
-    if (!STUDENTS_DB.some(s => s.id === student_id)) {
-      STUDENTS_DB.push({
+    // Find or create student in STUDENTS_DB
+    let student = STUDENTS_DB.find(s => s.id.trim().toLowerCase() === student_id.trim().toLowerCase());
+    if (!student) {
+      student = {
         id: student_id,
         name: "Campus Walk-in Student",
         college: college,
         program: `${college} Program`,
-        year: 1
-      });
-      saveData(DB_STUDENTS_PATH, STUDENTS_DB);
+        year: 1,
+        points: 0,
+        redeemedRewards: []
+      };
+      STUDENTS_DB.push(student);
     }
+
+    // Award +15 points for submitting an evaluation
+    student.points = (student.points || 0) + 15;
+    saveData(DB_STUDENTS_PATH, STUDENTS_DB);
 
     EVALUATIONS.push(newEvaluation);
     saveData(DB_EVALUATIONS_PATH, EVALUATIONS);
@@ -666,7 +673,8 @@ app.post("/api/submit-evaluation", (req, res) => {
       success: true,
       evaluation: newEvaluation,
       collegeCount: collegeSubmissions,
-      campusTotal: campusSubmissions
+      campusTotal: campusSubmissions,
+      student
     });
   } catch (error: any) {
     res.status(500).json({ success: false, error: error.message });

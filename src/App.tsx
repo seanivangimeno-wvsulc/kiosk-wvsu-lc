@@ -236,6 +236,7 @@ export default function App() {
   ]);
   const [terminalInput, setTerminalInput] = useState<string>('');
   const terminalBottomRef = useRef<HTMLDivElement>(null);
+  const lastLoadedIdRef = useRef<string>('');
 
   // Play audio notes safely
   const playBeep = (freq: number, dur: number) => {
@@ -411,24 +412,22 @@ export default function App() {
     if (!loggedInStudent.id || students.length === 0) return;
     const found = students.find(s => s.id.trim().toLowerCase() === loggedInStudent.id.trim().toLowerCase());
     if (found) {
-      if (
-        found.points !== loggedInStudent.points ||
-        found.name !== loggedInStudent.name ||
-        found.college !== loggedInStudent.college ||
-        found.program !== loggedInStudent.program ||
-        found.year !== loggedInStudent.year ||
-        JSON.stringify(found.redeemedRewards || []) !== JSON.stringify(loggedInStudent.redeemedRewards || [])
-      ) {
+      const isDifferentId = lastLoadedIdRef.current !== loggedInStudent.id;
+      const isBlank = !loggedInStudent.name || loggedInStudent.name === 'Student';
+      const hasMorePointsOnServer = (found.points ?? 0) > (loggedInStudent.points ?? 0);
+      
+      if (isDifferentId || isBlank || hasMorePointsOnServer) {
+        lastLoadedIdRef.current = loggedInStudent.id;
         setLoggedInStudent(prev => ({
           ...prev,
           name: found.name,
           college: found.college,
           program: found.program,
           year: found.year,
-          points: found.points ?? 0,
+          points: Math.max(found.points ?? 0, prev.points ?? 0),
           redeemedRewards: found.redeemedRewards ?? []
         }));
-        addTerminalLine(`Discovered profile match! Loaded ${found.name} (${found.points ?? 0} pts accumulated)`);
+        addTerminalLine(`Loaded profile match: ${found.name} (${found.points ?? 0} pts)`);
       }
     }
   }, [loggedInStudent.id, students]);
@@ -675,6 +674,16 @@ export default function App() {
         if (data.success) {
           setCompletedCollegeCount(data.collegeCount);
           setCompletedCampusCount(data.campusTotal);
+          
+          if (data.student) {
+            setLoggedInStudent(data.student);
+          } else {
+            setLoggedInStudent(prev => ({
+              ...prev,
+              points: (prev.points ?? 0) + 15
+            }));
+          }
+
           setKioskStep('completed');
           playBeep(1400, 0.35);
           syncDatabase();
