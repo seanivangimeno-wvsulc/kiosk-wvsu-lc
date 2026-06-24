@@ -278,14 +278,23 @@ export default function App() {
       if (loggedInStudent.id) {
         const found = localSt.find(s => s.id.trim().toLowerCase() === loggedInStudent.id.trim().toLowerCase());
         if (found) {
-          setLoggedInStudent(found);
+          setLoggedInStudent(prev => ({
+            ...prev,
+            name: found.name || prev.name,
+            college: found.college || prev.college,
+            program: found.program || prev.program,
+            year: found.year || prev.year,
+            points: found.points !== undefined ? found.points : prev.points,
+            redeemedRewards: found.redeemedRewards || prev.redeemedRewards || []
+          }));
         }
       }
     }
   };
 
   // SYNC UTILITY WITH SERVER DATASTORE
-  const syncDatabase = () => {
+  const syncDatabase = (overrideStudent?: Student) => {
+    const currentStudent = overrideStudent || loggedInStudent;
     if (isOfflineMode) {
       const localSt = loadLocalStorage('kiosk_students', INITIAL_STUDENTS);
       const localUp = loadLocalStorage('kiosk_upcoming_events', INITIAL_UPCOMING_EVENTS);
@@ -299,10 +308,20 @@ export default function App() {
       setEvaluations(localEvals);
       setAttendanceRecords(localAtt);
 
-      if (loggedInStudent.id) {
-        const found = localSt.find(s => s.id.trim().toLowerCase() === loggedInStudent.id.trim().toLowerCase());
+      if (currentStudent && currentStudent.id) {
+        const found = localSt.find(s => s.id.trim().toLowerCase() === currentStudent.id.trim().toLowerCase());
         if (found) {
-          setLoggedInStudent(found);
+          setLoggedInStudent({
+            ...currentStudent,
+            name: found.name || currentStudent.name,
+            college: found.college || currentStudent.college,
+            program: found.program || currentStudent.program,
+            year: found.year || currentStudent.year,
+            points: found.points !== undefined ? found.points : currentStudent.points,
+            redeemedRewards: found.redeemedRewards || currentStudent.redeemedRewards || []
+          });
+        } else {
+          setLoggedInStudent(currentStudent);
         }
       }
       return;
@@ -636,12 +655,21 @@ export default function App() {
 
         // Update student points (+15 points for submitting an evaluation!)
         const localStudents = loadLocalStorage('kiosk_students', INITIAL_STUDENTS);
-        const stIdx = localStudents.findIndex(s => s.id === payload.student_id);
-        if (stIdx >= 0) {
-          localStudents[stIdx].points = (localStudents[stIdx].points ?? 0) + 15;
-          saveLocalStorage('kiosk_students', localStudents);
-          setLoggedInStudent(localStudents[stIdx]);
+        let student = localStudents.find(s => s.id.trim().toLowerCase() === payload.student_id.trim().toLowerCase());
+        if (!student) {
+          student = {
+            id: payload.student_id,
+            name: loggedInStudent.name,
+            college: payload.college,
+            program: loggedInStudent.program || `${payload.college} Student`,
+            year: loggedInStudent.year || 1,
+            points: 0,
+            redeemedRewards: []
+          };
+          localStudents.push(student);
         }
+        student.points = (student.points ?? 0) + 15;
+        saveLocalStorage('kiosk_students', localStudents);
 
         // Calculate college counts
         const collegeCount = localEvals.filter(e => e.event_id === payload.event_id && e.college === payload.college).length;
@@ -651,7 +679,10 @@ export default function App() {
         setCompletedCampusCount(campusTotal);
         setKioskStep('completed');
         playBeep(1400, 0.35);
-        syncDatabase();
+        
+        lastLoadedIdRef.current = student.id;
+        setLoggedInStudent(student);
+        syncDatabase(student);
         addTerminalLine(`Submission ID ${newEval.id} filed under ${payload.college} channel successfully (Offline Mode)!`);
       }, 500);
       return;
@@ -675,18 +706,21 @@ export default function App() {
           setCompletedCollegeCount(data.collegeCount);
           setCompletedCampusCount(data.campusTotal);
           
+          let updatedStudent;
           if (data.student) {
-            setLoggedInStudent(data.student);
+            updatedStudent = data.student;
           } else {
-            setLoggedInStudent(prev => ({
-              ...prev,
-              points: (prev.points ?? 0) + 15
-            }));
+            updatedStudent = {
+              ...loggedInStudent,
+              points: (loggedInStudent.points ?? 0) + 15
+            };
           }
+          lastLoadedIdRef.current = updatedStudent.id;
+          setLoggedInStudent(updatedStudent);
 
           setKioskStep('completed');
           playBeep(1400, 0.35);
-          syncDatabase();
+          syncDatabase(updatedStudent);
           addTerminalLine(`Submission ID ${data.evaluation.id} filed under ${payload.college} channel successfully!`);
         } else {
           addTerminalLine(`PACKET ERROR: File reject. ${data.error}`);
@@ -719,12 +753,21 @@ export default function App() {
 
         // Update student points (+15 points for submitting an evaluation!)
         const localStudents = loadLocalStorage('kiosk_students', INITIAL_STUDENTS);
-        const stIdx = localStudents.findIndex(s => s.id === payload.student_id);
-        if (stIdx >= 0) {
-          localStudents[stIdx].points = (localStudents[stIdx].points ?? 0) + 15;
-          saveLocalStorage('kiosk_students', localStudents);
-          setLoggedInStudent(localStudents[stIdx]);
+        let student = localStudents.find(s => s.id.trim().toLowerCase() === payload.student_id.trim().toLowerCase());
+        if (!student) {
+          student = {
+            id: payload.student_id,
+            name: loggedInStudent.name,
+            college: payload.college,
+            program: loggedInStudent.program || `${payload.college} Student`,
+            year: loggedInStudent.year || 1,
+            points: 0,
+            redeemedRewards: []
+          };
+          localStudents.push(student);
         }
+        student.points = (student.points ?? 0) + 15;
+        saveLocalStorage('kiosk_students', localStudents);
 
         // Calculate college counts
         const collegeCount = localEvals.filter(e => e.event_id === payload.event_id && e.college === payload.college).length;
@@ -735,7 +778,10 @@ export default function App() {
         setCompletedCampusCount(campusTotal);
         setKioskStep('completed');
         playBeep(1400, 0.35);
-        syncDatabase();
+
+        lastLoadedIdRef.current = student.id;
+        setLoggedInStudent(student);
+        syncDatabase(student);
         addTerminalLine(`[SYSTEM] SERVER OFFLINE: Automatically enabled Local Storage DB mode.`);
         addTerminalLine(`Submission ID ${newEval.id} filed under ${payload.college} channel successfully (Offline Fallback)!`);
       });
@@ -834,9 +880,15 @@ export default function App() {
         setAttendanceMessage({ text: `Success! Attendance logged. You have earned +50 points! Current balance: ${matchedLocal.points} PTS.`, success: true });
         addTerminalLine(`SUCCESS: Attendance logged for ${matchedLocal.name}. +50 PTS credited (Offline Mode).`);
         
+        const updatedLocalStudent = {
+          ...matchedLocal,
+          lastAttendedEvent: eventTitle,
+          lastAttendedTimestamp: new Date().toLocaleString()
+        };
         setAttendanceProof('');
-        setLoggedInStudent(matchedLocal);
-        syncDatabase();
+        lastLoadedIdRef.current = updatedLocalStudent.id;
+        setLoggedInStudent(updatedLocalStudent);
+        syncDatabase(updatedLocalStudent);
       }, 500);
       return;
     }
@@ -863,18 +915,25 @@ export default function App() {
           // Clear snapshot on success
           setAttendanceProof('');
 
-          // Force local active student profile upgrade ("name card changes")
-          setLoggedInStudent({
+          const foundEvent = pastEvents.find(e => e.id === attendanceEventId) || upcomingEvents.find(e => e.id === attendanceEventId);
+          const eventTitle = foundEvent ? foundEvent.title : 'Campus Event';
+
+          const updatedOnlineStudent = {
             id: data.student.id,
             name: data.student.name,
             college: data.student.college,
             program: data.student.program || `${data.student.college} Student`,
             year: data.student.year || 1,
             points: data.student.points,
-            redeemedRewards: data.student.redeemedRewards || []
-          });
+            redeemedRewards: data.student.redeemedRewards || [],
+            lastAttendedEvent: eventTitle,
+            lastAttendedTimestamp: new Date().toLocaleString()
+          };
 
-          syncDatabase();
+          // Force local active student profile upgrade ("name card changes")
+          lastLoadedIdRef.current = updatedOnlineStudent.id;
+          setLoggedInStudent(updatedOnlineStudent);
+          syncDatabase(updatedOnlineStudent);
         } else {
           playBeep(400, 0.3);
           setAttendanceMessage({ text: `ERROR: ${data.error || 'Unable to register.'}`, success: false });
@@ -940,9 +999,15 @@ export default function App() {
         addTerminalLine(`[SYSTEM] SERVER OFFLINE: Automatically enabled Local Storage DB mode.`);
         addTerminalLine(`SUCCESS: Attendance logged for ${matchedLocal.name}. +50 PTS credited locally.`);
         
+        const updatedLocalStudent = {
+          ...matchedLocal,
+          lastAttendedEvent: eventTitle,
+          lastAttendedTimestamp: new Date().toLocaleString()
+        };
         setAttendanceProof('');
-        setLoggedInStudent(matchedLocal);
-        syncDatabase();
+        lastLoadedIdRef.current = updatedLocalStudent.id;
+        setLoggedInStudent(updatedLocalStudent);
+        syncDatabase(updatedLocalStudent);
       });
   };
 

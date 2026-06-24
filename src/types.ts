@@ -13,6 +13,8 @@ export interface Student {
   passcode?: string;
   points?: number;
   redeemedRewards?: string[];
+  lastAttendedEvent?: string;
+  lastAttendedTimestamp?: string;
 }
 
 export interface AttendanceRecord {
